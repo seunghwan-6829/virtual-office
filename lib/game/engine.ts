@@ -152,15 +152,15 @@ export class GameEngine {
   private onMove = (e: MouseEvent) => {
     const { x, y } = this.canvasXY(e);
     const w = this.hitTest(x, y);
-    const clickable = w && !w.isManager && (w.state === 'idle' || w.state === 'waitingAtCEO' || w.roleKey === 'manager');
+    const clickable = w && (w.state === 'idle' || w.state === 'waitingAtCEO' || w.roleKey === 'manager' || w.isManager);
     this.canvas.style.cursor = clickable ? 'pointer' : 'default';
   };
 
   private onClick = (e: MouseEvent) => {
     const { x, y } = this.canvasXY(e);
     const w = this.hitTest(x, y);
-    if (!w || w.isManager) return;
-    if (w.roleKey === 'manager') this.cb.onManagerClick();
+    if (!w) return;
+    if (w.isManager || w.roleKey === 'manager') this.cb.onManagerClick();
     else if (w.state === 'idle') this.cb.onWorkerClick(w.id);
     else if (w.state === 'waitingAtCEO') this.cb.onWaitingWorkerClick(w.id);
   };
