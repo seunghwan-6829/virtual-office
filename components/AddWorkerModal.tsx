@@ -12,6 +12,7 @@ export default function AddWorkerModal() {
   const workers = useOfficeStore(s => s.workers);
 
   const [name, setName] = useState('');
+  const [title, setTitle] = useState('');
   const [role, setRole] = useState('');
   const [llmIdx, setLlmIdx] = useState(0);
 
@@ -21,10 +22,10 @@ export default function AddWorkerModal() {
   const freeCount = OFFICES.filter(o => !usedOffices.has(o.id)).length;
 
   const submit = () => {
-    if (!name.trim() || !role.trim()) return;
+    if (!name.trim() || !title.trim() || !role.trim()) return;
     const llm = LLM_OPTIONS[llmIdx];
-    addWorker(name.trim(), role.trim(), llm.provider, llm.model);
-    setName(''); setRole(''); setLlmIdx(0);
+    addWorker(name.trim(), title.trim(), role.trim(), llm.provider, llm.model);
+    setName(''); setTitle(''); setRole(''); setLlmIdx(0);
   };
 
   return (
@@ -46,7 +47,12 @@ export default function AddWorkerModal() {
                   className="w-full bg-gray-800 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
               </div>
               <div>
-                <label className="text-gray-400 text-xs font-medium block mb-1">역할</label>
+                <label className="text-gray-400 text-xs font-medium block mb-1">직함</label>
+                <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="예: 기획자"
+                  className="w-full bg-gray-800 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+              </div>
+              <div>
+                <label className="text-gray-400 text-xs font-medium block mb-1">역할 설명</label>
                 <input type="text" value={role} onChange={e => setRole(e.target.value)} placeholder="예: 기획자 (사업 기획, 전략 수립)"
                   className="w-full bg-gray-800 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
               </div>
@@ -67,7 +73,7 @@ export default function AddWorkerModal() {
         </div>
         {freeCount > 0 && (
           <div className="p-4 border-t border-gray-800">
-            <button onClick={submit} disabled={!name.trim() || !role.trim()}
+            <button onClick={submit} disabled={!name.trim() || !title.trim() || !role.trim()}
               className="w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-xl text-sm font-medium transition-colors">
               직원 배치
             </button>

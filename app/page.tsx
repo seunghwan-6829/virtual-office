@@ -7,6 +7,7 @@ import ReportModal from '@/components/ReportModal';
 import ManagerDashboard from '@/components/ManagerDashboard';
 import WorkerStatusBar from '@/components/WorkerStatusBar';
 import AddWorkerModal from '@/components/AddWorkerModal';
+import WorkerStatsModal from '@/components/WorkerStatsModal';
 import { useOfficeStore } from '@/lib/store';
 
 export default function Home() {
@@ -50,7 +51,7 @@ export default function Home() {
 
       await new Promise(r => setTimeout(r, 1500));
       sendWorkerToCEO(workerId);
-    } catch (error) {
+    } catch {
       const fallbackResult = `[데모 모드] API 키가 설정되지 않았거나 오류가 발생했습니다.\n\n업무 내용: "${worker.currentTask?.instruction}"\n\n이것은 데모 결과입니다. .env.local 파일에 API 키를 설정하면 실제 LLM이 작동합니다.\n\n---\n예시 결과:\n${worker.role}로서 요청하신 업무를 완료했습니다. 상세 내용은 다음과 같습니다...\n\n1. 핵심 분석 결과\n2. 세부 내용 정리\n3. 추가 제안 사항`;
 
       completeTask(workerId, fallbackResult);
@@ -108,6 +109,7 @@ export default function Home() {
       <ReportModal />
       <ManagerDashboard />
       <AddWorkerModal />
+      <WorkerStatsModal />
     </main>
   );
 }

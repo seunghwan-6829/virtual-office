@@ -1,8 +1,7 @@
 import { Worker, Position, BG_WIDTH, BG_HEIGHT, CHAR_HEIGHT } from '../types';
-import { MANAGER_POSITION } from './office-map';
 import {
   preloadAssets, getImage, drawCharacterSprite,
-  drawNameTag, drawSpeechBubble, drawProgressBar, drawWaitingDots,
+  drawCharacterLabel, drawSpeechBubble, drawProgressBar, drawReportWaiting,
 } from './sprites';
 import { updateCharacterMovement, isPathComplete } from './character';
 
@@ -111,7 +110,7 @@ export class GameEngine {
       const bob = walking ? Math.sin(w.animTimer * 9) * 3 : 0;
 
       drawCharacterSprite(ctx, w.charId, w.position.x, w.position.y, w.direction, CHAR_HEIGHT, bob);
-      drawNameTag(ctx, w.position.x, w.position.y, w.name, CHAR_HEIGHT);
+      drawCharacterLabel(ctx, w.position.x, w.position.y, w.name, w.title, CHAR_HEIGHT);
 
       if (w.state === 'working' && w.currentTask) {
         const elapsed = (Date.now() - w.currentTask.createdAt) / 1000;
@@ -119,8 +118,7 @@ export class GameEngine {
       }
 
       if (w.state === 'waitingAtCEO') {
-        drawSpeechBubble(ctx, w.position.x, w.position.y, '보고 대기', CHAR_HEIGHT);
-        drawWaitingDots(ctx, w.position.x, w.position.y, this.clock, CHAR_HEIGHT);
+        drawReportWaiting(ctx, w.position.x, w.position.y, this.clock, CHAR_HEIGHT);
       }
 
       if (w.isManager && w.state === 'idle') {

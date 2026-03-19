@@ -1,6 +1,6 @@
 export const BG_WIDTH = 2752;
 export const BG_HEIGHT = 1536;
-export const CHAR_HEIGHT = 105;
+export const CHAR_HEIGHT = 128;
 export const MOVE_SPEED = 320;
 
 export type WorkerState =
@@ -31,6 +31,7 @@ export interface Worker {
   id: string;
   charId: number;
   name: string;
+  title: string;
   role: string;
   state: WorkerState;
   position: Position;
@@ -69,7 +70,7 @@ export interface ManagerLog {
 }
 
 export interface ModalState {
-  type: 'task' | 'report' | 'manager' | 'addWorker' | null;
+  type: 'task' | 'report' | 'manager' | 'addWorker' | 'stats' | null;
   workerId: string | null;
 }
 

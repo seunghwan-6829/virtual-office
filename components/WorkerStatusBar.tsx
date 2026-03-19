@@ -17,6 +17,7 @@ const STATE_LABELS: Record<WorkerState, { text: string; color: string }> = {
 export default function WorkerStatusBar() {
   const workers = useOfficeStore(s => s.workers);
   const openAddWorkerModal = useOfficeStore(s => s.openAddWorkerModal);
+  const openStatsModal = useOfficeStore(s => s.openStatsModal);
 
   return (
     <div className="bg-gray-900/90 border-t border-gray-700 px-4 py-2">
@@ -26,18 +27,20 @@ export default function WorkerStatusBar() {
           const si = STATE_LABELS[w.state];
           const color = getCharColor(w.charId);
           return (
-            <div key={w.id} className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5 flex-shrink-0">
+            <button key={w.id}
+              onClick={() => openStatsModal(w.id)}
+              className="flex items-center gap-2 bg-gray-800 hover:bg-gray-750 rounded-lg px-3 py-1.5 flex-shrink-0 transition-colors cursor-pointer border border-transparent hover:border-gray-600">
               <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
                 style={{ backgroundColor: color }}>{w.name[0]}</div>
-              <div>
-                <div className="text-white text-xs font-medium">{w.name}</div>
+              <div className="text-left">
+                <div className="text-white text-xs font-medium">{w.name} <span className="text-gray-500 font-normal">{w.title}</span></div>
                 <div className="flex items-center gap-1">
                   <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: si.color }} />
                   <span className="text-gray-400 text-[10px]">{si.text}</span>
                   <span className="text-[10px] ml-0.5" style={{ color: PROVIDER_COLORS[w.provider] }}>{w.provider}</span>
                 </div>
               </div>
-            </div>
+            </button>
           );
         })}
         <button onClick={openAddWorkerModal}
