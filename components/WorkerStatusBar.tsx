@@ -1,0 +1,50 @@
+'use client';
+
+import { useOfficeStore } from '@/lib/store';
+import { PROVIDER_COLORS } from '@/lib/llm-config';
+import { WorkerState, getCharColor } from '@/lib/types';
+
+const STATE_LABELS: Record<WorkerState, { text: string; color: string }> = {
+  idle: { text: '대기', color: '#6b7280' },
+  chatting: { text: '대화 중', color: '#3b82f6' },
+  working: { text: '작업 중', color: '#f59e0b' },
+  walkingToCEO: { text: '이동 중', color: '#8b5cf6' },
+  waitingAtCEO: { text: '보고 대기', color: '#ef4444' },
+  reporting: { text: '보고 중', color: '#10b981' },
+  walkingBack: { text: '복귀 중', color: '#8b5cf6' },
+};
+
+export default function WorkerStatusBar() {
+  const workers = useOfficeStore(s => s.workers);
+  const openAddWorkerModal = useOfficeStore(s => s.openAddWorkerModal);
+
+  return (
+    <div className="bg-gray-900/90 border-t border-gray-700 px-4 py-2">
+      <div className="flex items-center gap-2 overflow-x-auto">
+        <span className="text-gray-500 text-xs font-medium flex-shrink-0 mr-1">직원</span>
+        {workers.filter(w => !w.isManager).map(w => {
+          const si = STATE_LABELS[w.state];
+          const color = getCharColor(w.charId);
+          return (
+            <div key={w.id} className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5 flex-shrink-0">
+              <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                style={{ backgroundColor: color }}>{w.name[0]}</div>
+              <div>
+                <div className="text-white text-xs font-medium">{w.name}</div>
+                <div className="flex items-center gap-1">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: si.color }} />
+                  <span className="text-gray-400 text-[10px]">{si.text}</span>
+                  <span className="text-[10px] ml-0.5" style={{ color: PROVIDER_COLORS[w.provider] }}>{w.provider}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <button onClick={openAddWorkerModal}
+          className="flex items-center gap-1 bg-gray-800 hover:bg-gray-700 rounded-lg px-3 py-2.5 flex-shrink-0 text-gray-400 hover:text-white transition-colors text-xs">
+          <span className="text-lg leading-none">+</span><span>추가</span>
+        </button>
+      </div>
+    </div>
+  );
+}
