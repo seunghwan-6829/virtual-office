@@ -9,7 +9,7 @@ export async function POST(req: Request) {
   try {
     const { instruction, role, roleKey, model, previousResult, revisionFeedback } = await req.json();
 
-    let systemPrompt = getRoleSystemPrompt((roleKey || 'blog') as RoleKey, role);
+    let systemPrompt = getRoleSystemPrompt((roleKey || 'spPlanner') as RoleKey, role);
 
     let prompt = instruction;
     if (previousResult && revisionFeedback) {

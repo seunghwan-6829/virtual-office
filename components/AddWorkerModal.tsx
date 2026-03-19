@@ -6,14 +6,14 @@ import { RoleKey } from '@/lib/types';
 import { OFFICES } from '@/lib/game/office-map';
 
 const ROLE_OPTIONS: { key: RoleKey; title: string; role: string }[] = [
-  { key: 'blog', title: '블로그 작가', role: '블로그 작가 (블로그 글, 에세이)' },
-  { key: 'sns', title: 'SNS 매니저', role: 'SNS 매니저 (인스타, 유튜브 콘텐츠)' },
-  { key: 'copy', title: '카피라이터', role: '카피라이터 (광고 카피, 슬로건)' },
-  { key: 'salesPage', title: '상페 카피라이터', role: '상세페이지 카피라이터 (전환율 최적화)' },
-  { key: 'research', title: '리서처', role: '리서처 (시장조사, 트렌드 분석)' },
-  { key: 'video', title: '영상 작가', role: '영상 스크립트 작가 (유튜브/숏폼 대본)' },
-  { key: 'seo', title: 'SEO 전문가', role: 'SEO 전문가 (키워드·SEO 콘텐츠)' },
-  { key: 'designer', title: '디자이너', role: '디자이너 (이미지 생성)' },
+  { key: 'spPlanner', title: '상페 기획', role: '상세페이지 기획 (구성·레이아웃·스토리보드)' },
+  { key: 'spCopy', title: '상페 카피', role: '상세페이지 카피라이터 (헤드라인·본문·CTA)' },
+  { key: 'spHook', title: '상페 후킹', role: '상세페이지 후킹 전문 (고객 유인·pain point)' },
+  { key: 'spCRO', title: '상페 전환최적화', role: '상세페이지 CRO (전환율 분석·A/B테스트)' },
+  { key: 'daStrategy', title: 'DA 전략기획', role: 'DA 전략기획 (캠페인·타겟팅·매체선정)' },
+  { key: 'daCopy', title: 'DA 카피', role: 'DA 광고카피 (소재 헤드라인·본문·CTA)' },
+  { key: 'daAnalysis', title: 'DA 퍼포먼스', role: 'DA 퍼포먼스 분석 (ROAS·CTR·리포트)' },
+  { key: 'daCreative', title: 'DA 소재디자인', role: 'DA 소재 디자이너 (배너·이미지·크리에이티브)' },
 ];
 
 export default function AddWorkerModal() {

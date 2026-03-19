@@ -78,14 +78,17 @@ const M = 'claude-opus-4-6';
 const P = 'anthropic' as LLMProvider;
 
 const INITIAL: Worker[] = [
-  makeWorker(1, 0, '김하늘', '블로그 작가', 'blog', '블로그 작가 (블로그 글, 에세이)', P, M),
-  makeWorker(2, 1, '이서연', 'SNS 매니저', 'sns', 'SNS 매니저 (인스타, 유튜브 콘텐츠)', P, M),
-  makeWorker(3, 2, '박지민', '카피라이터', 'copy', '카피라이터 (광고 카피, 슬로건)', P, M),
-  makeWorker(4, 3, '최유진', '상페 카피라이터', 'salesPage', '상세페이지 카피라이터 (전환율 최적화)', P, M),
-  makeWorker(5, 4, '정민수', '리서처', 'research', '리서처 (시장조사, 트렌드 분석)', P, M),
-  makeWorker(6, 5, '강다현', '영상 작가', 'video', '영상 스크립트 작가 (유튜브/숏폼 대본)', P, M),
-  makeWorker(7, 6, '윤재호', 'SEO 전문가', 'seo', 'SEO 전문가 (키워드·SEO 콘텐츠)', P, M),
-  makeWorker(8, 7, '김인기', '디자이너', 'designer', '디자이너 (Gemini 이미지 생성)', P, M),
+  // 상세페이지 팀
+  makeWorker(1, 0, '김하늘', '상페 기획', 'spPlanner', '상세페이지 기획 (구성·레이아웃·스토리보드)', P, M),
+  makeWorker(2, 1, '이서연', '상페 카피', 'spCopy', '상세페이지 카피라이터 (헤드라인·본문·CTA)', P, M),
+  makeWorker(3, 2, '박지민', '상페 후킹', 'spHook', '상세페이지 후킹 전문 (고객 유인·pain point)', P, M),
+  makeWorker(4, 3, '최유진', '상페 전환최적화', 'spCRO', '상세페이지 CRO (전환율 분석·A/B테스트)', P, M),
+  // DA 팀
+  makeWorker(5, 4, '정민수', 'DA 전략기획', 'daStrategy', 'DA 전략기획 (캠페인·타겟팅·매체선정)', P, M),
+  makeWorker(6, 5, '강다현', 'DA 카피', 'daCopy', 'DA 광고카피 (소재 헤드라인·본문·CTA)', P, M),
+  makeWorker(7, 6, '윤재호', 'DA 퍼포먼스', 'daAnalysis', 'DA 퍼포먼스 분석 (ROAS·CTR·리포트)', P, M),
+  makeWorker(8, 7, '김인기', 'DA 소재디자인', 'daCreative', 'DA 소재 디자이너 (배너·이미지·크리에이티브)', P, M),
+  // 관리
   makeWorker(9, 8, '윤성현', '중간관리자', 'manager', '중간관리자 (프로세스·데이터 관리)', P, M),
   { ...makeWorker(10, 0, '송승환', '파운더', 'manager', '파운더 / CEO (전체 총괄)', P, M, true) },
 ];

@@ -17,14 +17,14 @@ export type LLMProvider = 'openai' | 'anthropic' | 'google';
 export type Direction = 'up' | 'down' | 'left' | 'right';
 
 export type RoleKey =
-  | 'blog'
-  | 'sns'
-  | 'copy'
-  | 'salesPage'
-  | 'research'
-  | 'video'
-  | 'seo'
-  | 'designer'
+  | 'spPlanner'
+  | 'spCopy'
+  | 'spHook'
+  | 'spCRO'
+  | 'daStrategy'
+  | 'daCopy'
+  | 'daAnalysis'
+  | 'daCreative'
   | 'manager';
 
 export interface Position {

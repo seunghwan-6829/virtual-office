@@ -1,14 +1,14 @@
 'use client';
 
 import { useOfficeStore } from '@/lib/store';
-import BlogWriterModal from './role-modals/BlogWriterModal';
-import SNSManagerModal from './role-modals/SNSManagerModal';
-import CopywriterModal from './role-modals/CopywriterModal';
-import SalesPageModal from './role-modals/SalesPageModal';
-import ResearcherModal from './role-modals/ResearcherModal';
-import VideoWriterModal from './role-modals/VideoWriterModal';
-import SEOExpertModal from './role-modals/SEOExpertModal';
-import DesignerModal from './role-modals/DesignerModal';
+import SPPlannerModal from './role-modals/SPPlannerModal';
+import SPCopyModal from './role-modals/SPCopyModal';
+import SPHookModal from './role-modals/SPHookModal';
+import SPCROModal from './role-modals/SPCROModal';
+import DAStrategyModal from './role-modals/DAStrategyModal';
+import DACopyModal from './role-modals/DACopyModal';
+import DAAnalysisModal from './role-modals/DAAnalysisModal';
+import DACreativeModal from './role-modals/DACreativeModal';
 
 export default function TaskAssignModal() {
   const modal = useOfficeStore(s => s.modal);
@@ -20,22 +20,22 @@ export default function TaskAssignModal() {
   if (!worker) return null;
 
   switch (worker.roleKey) {
-    case 'blog':
-      return <BlogWriterModal worker={worker} onClose={closeModal} />;
-    case 'sns':
-      return <SNSManagerModal worker={worker} onClose={closeModal} />;
-    case 'copy':
-      return <CopywriterModal worker={worker} onClose={closeModal} />;
-    case 'salesPage':
-      return <SalesPageModal worker={worker} onClose={closeModal} />;
-    case 'research':
-      return <ResearcherModal worker={worker} onClose={closeModal} />;
-    case 'video':
-      return <VideoWriterModal worker={worker} onClose={closeModal} />;
-    case 'seo':
-      return <SEOExpertModal worker={worker} onClose={closeModal} />;
-    case 'designer':
-      return <DesignerModal worker={worker} onClose={closeModal} />;
+    case 'spPlanner':
+      return <SPPlannerModal worker={worker} onClose={closeModal} />;
+    case 'spCopy':
+      return <SPCopyModal worker={worker} onClose={closeModal} />;
+    case 'spHook':
+      return <SPHookModal worker={worker} onClose={closeModal} />;
+    case 'spCRO':
+      return <SPCROModal worker={worker} onClose={closeModal} />;
+    case 'daStrategy':
+      return <DAStrategyModal worker={worker} onClose={closeModal} />;
+    case 'daCopy':
+      return <DACopyModal worker={worker} onClose={closeModal} />;
+    case 'daAnalysis':
+      return <DAAnalysisModal worker={worker} onClose={closeModal} />;
+    case 'daCreative':
+      return <DACreativeModal worker={worker} onClose={closeModal} />;
     default:
       return null;
   }
