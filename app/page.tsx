@@ -19,40 +19,54 @@ export default function Home() {
     const worker = useOfficeStore.getState().workers.find(w => w.id === workerId);
     if (!worker || !worker.currentTask) return;
 
+    const task = worker.currentTask;
+    const lastRevision = task.revisions.length > 0 ? task.revisions[task.revisions.length - 1] : null;
+    const isRevision = lastRevision && !lastRevision.result;
+
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          instruction: worker.currentTask.instruction,
+          instruction: task.instruction,
           role: worker.role,
-          provider: worker.provider,
+          roleKey: worker.roleKey,
           model: worker.model,
+          previousResult: isRevision ? task.result : undefined,
+          revisionFeedback: isRevision ? lastRevision.feedback : undefined,
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No response body');
 
       const decoder = new TextDecoder();
       let result = '';
-
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         result += decoder.decode(value, { stream: true });
       }
 
-      completeTask(workerId, result);
+      if (isRevision) {
+        const store = useOfficeStore.getState();
+        const w = store.workers.find(v => v.id === workerId);
+        if (w?.currentTask) {
+          const revisions = [...w.currentTask.revisions];
+          revisions[revisions.length - 1] = { ...revisions[revisions.length - 1], result, completedAt: Date.now() };
+          store.updateWorker(workerId, {
+            currentTask: { ...w.currentTask, result, revisions, status: 'completed', completedAt: Date.now() },
+          });
+        }
+      }
 
+      completeTask(workerId, result);
       await new Promise(r => setTimeout(r, 1500));
       sendWorkerToCEO(workerId);
     } catch {
-      const fallbackResult = `[데모 모드] API 키가 설정되지 않았거나 오류가 발생했습니다.\n\n업무 내용: "${worker.currentTask?.instruction}"\n\n이것은 데모 결과입니다. .env.local 파일에 API 키를 설정하면 실제 LLM이 작동합니다.\n\n---\n예시 결과:\n${worker.role}로서 요청하신 업무를 완료했습니다. 상세 내용은 다음과 같습니다...\n\n1. 핵심 분석 결과\n2. 세부 내용 정리\n3. 추가 제안 사항`;
+      const fallbackResult = `[데모 모드] API 키가 설정되지 않았거나 오류가 발생했습니다.\n\n업무 내용: "${task.instruction}"\n\n---\n예시 결과:\n${worker.role}로서 요청하신 업무를 완료했습니다.\n\n1. 핵심 분석 결과\n2. 세부 내용 정리\n3. 추가 제안 사항`;
 
       completeTask(workerId, fallbackResult);
       await new Promise(r => setTimeout(r, 1500));
@@ -76,12 +90,9 @@ export default function Home() {
 
   return (
     <main className="h-screen flex flex-col bg-[#0a0a0f]">
-      {/* Title bar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800">
         <div className="flex items-center gap-3">
-          <h1 className="text-white font-bold text-sm tracking-wide">
-            VIRTUAL OFFICE
-          </h1>
+          <h1 className="text-white font-bold text-sm tracking-wide">VIRTUAL OFFICE</h1>
           <span className="text-gray-600 text-xs">AI Agent Simulation</span>
         </div>
         <div className="flex items-center gap-3">
@@ -90,21 +101,16 @@ export default function Home() {
               보고 대기: {waitingCount}명
             </span>
           )}
-          <span className="text-gray-500 text-xs">
-            직원을 클릭하여 업무를 지시하세요
-          </span>
+          <span className="text-gray-500 text-xs">직원을 클릭하여 업무를 지시하세요</span>
         </div>
       </div>
 
-      {/* Canvas area */}
       <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
         <OfficeCanvas />
       </div>
 
-      {/* Bottom bar */}
       <WorkerStatusBar />
 
-      {/* Modals */}
       <TaskAssignModal />
       <ReportModal />
       <ManagerDashboard />

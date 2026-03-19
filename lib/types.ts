@@ -10,10 +10,22 @@ export type WorkerState =
   | 'walkingToCEO'
   | 'waitingAtCEO'
   | 'reporting'
+  | 'revising'
   | 'walkingBack';
 
 export type LLMProvider = 'openai' | 'anthropic' | 'google';
 export type Direction = 'up' | 'down' | 'left' | 'right';
+
+export type RoleKey =
+  | 'blog'
+  | 'sns'
+  | 'copy'
+  | 'salesPage'
+  | 'research'
+  | 'video'
+  | 'seo'
+  | 'designer'
+  | 'manager';
 
 export interface Position {
   x: number;
@@ -32,6 +44,7 @@ export interface Worker {
   charId: number;
   name: string;
   title: string;
+  roleKey: RoleKey;
   role: string;
   state: WorkerState;
   position: Position;
@@ -55,6 +68,15 @@ export interface Task {
   status: 'pending' | 'in_progress' | 'completed' | 'reported';
   createdAt: number;
   completedAt?: number;
+  revisions: Revision[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface Revision {
+  feedback: string;
+  result: string;
+  createdAt: number;
+  completedAt?: number;
 }
 
 export interface ManagerLog {
@@ -67,6 +89,21 @@ export interface ManagerLog {
   durationMs: number;
   provider: LLMProvider;
   model: string;
+}
+
+export interface TaskRecord {
+  id: string;
+  workerId: string;
+  workerName: string;
+  workerTitle: string;
+  roleKey: RoleKey;
+  instruction: string;
+  result: string;
+  revisions: Revision[];
+  metadata?: Record<string, unknown>;
+  createdAt: number;
+  completedAt: number;
+  durationMs: number;
 }
 
 export interface ModalState {

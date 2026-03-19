@@ -1,148 +1,163 @@
 'use client';
 
+import { useState } from 'react';
 import { useOfficeStore } from '@/lib/store';
-import { PROVIDER_COLORS } from '@/lib/llm-config';
+import { getCharColor } from '@/lib/types';
+import { loadTaskRecords, getAllRecordsAsCSV, getAllRecordsAsJSON } from '@/lib/storage';
+
+type Tab = 'overview' | 'workers' | 'history' | 'export';
 
 export default function ManagerDashboard() {
   const modal = useOfficeStore(s => s.modal);
-  const closeModal = useOfficeStore(s => s.closeModal);
-  const managerLogs = useOfficeStore(s => s.managerLogs);
   const workers = useOfficeStore(s => s.workers);
-  const tasks = useOfficeStore(s => s.tasks);
+  const managerLogs = useOfficeStore(s => s.managerLogs);
+  const closeModal = useOfficeStore(s => s.closeModal);
+  const [tab, setTab] = useState<Tab>('overview');
 
   if (modal.type !== 'manager') return null;
 
-  const completedTasks = tasks.filter(t => t.status === 'reported');
-  const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
-  const avgDuration = managerLogs.length > 0
-    ? Math.round(managerLogs.reduce((sum, l) => sum + l.durationMs, 0) / managerLogs.length / 1000)
-    : 0;
+  const manager = workers.find(w => w.roleKey === 'manager' && !w.isManager);
+  const regularWorkers = workers.filter(w => !w.isManager && w.roleKey !== 'manager');
+  const allRecords = loadTaskRecords();
+  const completed = managerLogs.length;
+  const working = workers.filter(w => w.state === 'working').length;
+  const waiting = workers.filter(w => w.state === 'waitingAtCEO').length;
+  const avgDuration = completed > 0 ? Math.round(managerLogs.reduce((s, l) => s + l.durationMs, 0) / completed / 1000) : 0;
 
-  const providerUsage = managerLogs.reduce<Record<string, number>>((acc, log) => {
-    acc[log.provider] = (acc[log.provider] || 0) + 1;
-    return acc;
-  }, {});
+  const downloadFile = (content: string, filename: string, type: string) => {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
-    >
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden max-h-[80vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-3xl mx-4 overflow-hidden max-h-[85vh] flex flex-col">
         {/* Header */}
-        <div className="p-4 border-b border-gray-700 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-white text-lg">
-            📊
-          </div>
+        <div className="p-4 border-b border-gray-700 flex items-center gap-3 flex-shrink-0">
+          {manager && (
+            <div className="w-11 h-11 rounded-full overflow-hidden flex-shrink-0 border-2"
+              style={{ borderColor: getCharColor(manager.charId) }}>
+              <img src={`/sprites/characters/CH_${manager.charId}_Front.png`} alt={manager.name}
+                className="w-full h-full object-cover" />
+            </div>
+          )}
           <div className="flex-1">
-            <h3 className="text-white font-bold">중간관리자 대시보드</h3>
-            <p className="text-gray-400 text-xs">전체 업무 현황 · 프로세스 분석 · 데이터 관리</p>
+            <h3 className="text-white font-bold">{manager?.name ?? '윤성현'} <span className="text-gray-500 font-normal">중간관리자</span></h3>
+            <p className="text-gray-400 text-xs">프로세스 관리 · 데이터 분석</p>
           </div>
-          <button
-            onClick={closeModal}
-            className="text-gray-500 hover:text-white transition-colors"
-          >
-            ✕
-          </button>
+          <button onClick={closeModal} className="text-gray-500 hover:text-white transition-colors">✕</button>
         </div>
 
-        {/* Stats */}
-        <div className="p-4 grid grid-cols-4 gap-3">
-          <div className="bg-gray-800 rounded-xl p-3 text-center">
-            <div className="text-2xl font-bold text-white">{workers.length}</div>
-            <div className="text-xs text-gray-400">직원 수</div>
-          </div>
-          <div className="bg-gray-800 rounded-xl p-3 text-center">
-            <div className="text-2xl font-bold text-green-400">{completedTasks.length}</div>
-            <div className="text-xs text-gray-400">완료 업무</div>
-          </div>
-          <div className="bg-gray-800 rounded-xl p-3 text-center">
-            <div className="text-2xl font-bold text-yellow-400">{inProgressTasks.length}</div>
-            <div className="text-xs text-gray-400">진행 중</div>
-          </div>
-          <div className="bg-gray-800 rounded-xl p-3 text-center">
-            <div className="text-2xl font-bold text-blue-400">{avgDuration}s</div>
-            <div className="text-xs text-gray-400">평균 소요</div>
-          </div>
+        {/* Tabs */}
+        <div className="flex border-b border-gray-800 flex-shrink-0">
+          {([['overview', '📊 개요'], ['workers', '👥 직원별'], ['history', '📋 히스토리'], ['export', '💾 내보내기']] as [Tab, string][]).map(([t, label]) => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${tab === t ? 'text-white border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-300'}`}>
+              {label}
+            </button>
+          ))}
         </div>
 
-        {/* Provider usage */}
-        {Object.keys(providerUsage).length > 0 && (
-          <div className="px-4 pb-3">
-            <div className="text-xs text-gray-500 mb-2 font-medium">🤖 LLM 사용 현황</div>
-            <div className="flex gap-2">
-              {Object.entries(providerUsage).map(([provider, count]) => (
-                <span
-                  key={provider}
-                  className="text-xs px-2 py-1 rounded-full"
-                  style={{
-                    backgroundColor: PROVIDER_COLORS[provider as keyof typeof PROVIDER_COLORS] + '22',
-                    color: PROVIDER_COLORS[provider as keyof typeof PROVIDER_COLORS],
-                  }}
-                >
-                  {provider}: {count}회
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Logs */}
-        <div className="flex-1 overflow-y-auto px-4 pb-4">
-          <div className="text-xs text-gray-500 mb-2 font-medium">📋 업무 로그</div>
-          {managerLogs.length === 0 ? (
-            <div className="text-gray-600 text-sm text-center py-8">
-              아직 완료된 업무가 없습니다
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {[...managerLogs].reverse().map(log => (
-                <div key={log.id} className="bg-gray-800 rounded-lg p-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-white text-sm font-medium">{log.workerName}</span>
-                    <span
-                      className="text-xs px-1.5 py-0.5 rounded"
-                      style={{
-                        backgroundColor: PROVIDER_COLORS[log.provider] + '22',
-                        color: PROVIDER_COLORS[log.provider],
-                      }}
-                    >
-                      {log.model}
-                    </span>
-                    <span className="text-gray-500 text-xs ml-auto">
-                      {Math.round(log.durationMs / 1000)}초
-                    </span>
-                  </div>
-                  <div className="text-gray-400 text-xs mb-1">
-                    지시: {log.taskInstruction.slice(0, 80)}{log.taskInstruction.length > 80 ? '...' : ''}
-                  </div>
-                  <div className="text-gray-300 text-xs">
-                    결과: {log.taskResult.slice(0, 120)}{log.taskResult.length > 120 ? '...' : ''}
-                  </div>
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {tab === 'overview' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-4 gap-3">
+                <div className="bg-gray-800 rounded-xl p-3 text-center">
+                  <div className="text-2xl font-bold text-blue-400">{completed}</div>
+                  <div className="text-xs text-gray-500">완료 업무</div>
                 </div>
-              ))}
+                <div className="bg-gray-800 rounded-xl p-3 text-center">
+                  <div className="text-2xl font-bold text-amber-400">{working}</div>
+                  <div className="text-xs text-gray-500">작업 중</div>
+                </div>
+                <div className="bg-gray-800 rounded-xl p-3 text-center">
+                  <div className="text-2xl font-bold text-red-400">{waiting}</div>
+                  <div className="text-xs text-gray-500">보고 대기</div>
+                </div>
+                <div className="bg-gray-800 rounded-xl p-3 text-center">
+                  <div className="text-2xl font-bold text-green-400">{avgDuration}s</div>
+                  <div className="text-xs text-gray-500">평균 소요</div>
+                </div>
+              </div>
+              {waiting > 3 && <div className="bg-amber-900/20 border border-amber-700/30 rounded-lg p-3 text-xs text-amber-300">⚠️ CEO 보고 대기 인원이 많습니다. 보고를 확인해주세요.</div>}
+              {avgDuration > 60 && <div className="bg-red-900/20 border border-red-700/30 rounded-lg p-3 text-xs text-red-300">⚠️ 평균 업무 소요시간이 깁니다. 업무 난이도를 확인해주세요.</div>}
+            </div>
+          )}
+
+          {tab === 'workers' && (
+            <div className="space-y-3">
+              {regularWorkers.map(w => {
+                const wLogs = managerLogs.filter(l => l.workerId === w.id);
+                const wRecords = allRecords.filter(r => r.workerId === w.id);
+                const wAvg = wLogs.length > 0 ? Math.round(wLogs.reduce((s, l) => s + l.durationMs, 0) / wLogs.length / 1000) : 0;
+                return (
+                  <div key={w.id} className="bg-gray-800 rounded-xl p-3 flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 border-2"
+                      style={{ borderColor: getCharColor(w.charId) }}>
+                      <img src={`/sprites/characters/CH_${w.charId}_Front.png`} alt={w.name}
+                        className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white text-sm font-medium">{w.name} <span className="text-gray-500 text-xs">{w.title}</span></div>
+                      <div className="text-xs text-gray-500">{w.state === 'idle' ? '대기 중' : w.state}</div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-sm font-bold text-blue-400">{wLogs.length + wRecords.length}</div>
+                      <div className="text-xs text-gray-500">{wAvg > 0 ? `평균 ${wAvg}s` : '-'}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {tab === 'history' && (
+            <div className="space-y-2">
+              {managerLogs.length === 0 && allRecords.length === 0 ? (
+                <div className="text-center py-8 text-gray-600 text-sm">아직 기록이 없습니다</div>
+              ) : (
+                [...managerLogs].reverse().slice(0, 30).map(log => (
+                  <div key={log.id} className="bg-gray-800 rounded-lg p-3 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-white text-xs font-medium">{log.workerName}</span>
+                      <span className="text-gray-500 text-xs">{new Date(log.timestamp).toLocaleString('ko-KR')}</span>
+                    </div>
+                    <p className="text-gray-400 text-xs truncate">{log.taskInstruction}</p>
+                    <p className="text-gray-500 text-xs">소요: {Math.round(log.durationMs / 1000)}초</p>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {tab === 'export' && (
+            <div className="space-y-4">
+              <p className="text-gray-400 text-sm">저장된 데이터를 내보냅니다. (세션 + localStorage)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => downloadFile(getAllRecordsAsCSV(), `office_data_${Date.now()}.csv`, 'text/csv')}
+                  className="bg-gray-800 hover:bg-gray-700 rounded-xl p-4 text-center transition-colors">
+                  <div className="text-2xl mb-1">📊</div>
+                  <div className="text-white text-sm font-medium">CSV 내보내기</div>
+                  <div className="text-gray-500 text-xs">{allRecords.length}건</div>
+                </button>
+                <button onClick={() => downloadFile(getAllRecordsAsJSON(), `office_data_${Date.now()}.json`, 'application/json')}
+                  className="bg-gray-800 hover:bg-gray-700 rounded-xl p-4 text-center transition-colors">
+                  <div className="text-2xl mb-1">📋</div>
+                  <div className="text-white text-sm font-medium">JSON 내보내기</div>
+                  <div className="text-gray-500 text-xs">{allRecords.length}건</div>
+                </button>
+              </div>
+              <div className="bg-gray-800 rounded-xl p-3 text-xs text-gray-500">
+                세션 내 로그: {managerLogs.length}건 · localStorage 기록: {allRecords.length}건
+              </div>
             </div>
           )}
         </div>
-
-        {/* Process insights */}
-        {managerLogs.length >= 2 && (
-          <div className="p-4 border-t border-gray-800">
-            <div className="text-xs text-gray-500 mb-1 font-medium">💡 프로세스 인사이트</div>
-            <div className="text-xs text-gray-400 bg-gray-800 rounded-lg p-3 space-y-1">
-              {workers.filter(w => w.state === 'waitingAtCEO').length > 2 && (
-                <p>⚠️ CEO실 앞에 대기 인원이 많습니다. 보고를 처리해주세요.</p>
-              )}
-              {avgDuration > 30 && (
-                <p>⚠️ 평균 업무 소요시간이 {avgDuration}초로 높습니다. 더 빠른 모델을 고려해보세요.</p>
-              )}
-              {workers.filter(w => w.state === 'idle').length === workers.length && managerLogs.length > 0 && (
-                <p>✅ 모든 직원이 대기 중입니다. 새 업무를 배분해보세요.</p>
-              )}
-              <p>📊 총 {managerLogs.length}건의 업무가 처리되었습니다.</p>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

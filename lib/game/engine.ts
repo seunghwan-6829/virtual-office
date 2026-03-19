@@ -81,7 +81,7 @@ export class GameEngine {
   private update(dt: number) {
     const workers = this.cb.getWorkers();
     for (const w of workers) {
-      if (w.state !== 'walkingToCEO' && w.state !== 'walkingBack') continue;
+      if (w.state !== 'walkingToCEO' && w.state !== 'walkingBack' && w.state !== 'revising') continue;
       const next = updateCharacterMovement(w, dt);
       this.cb.updateWorker(w.id, {
         position: next.position,
@@ -91,7 +91,7 @@ export class GameEngine {
       });
       if (isPathComplete(next)) {
         if (w.state === 'walkingToCEO') this.cb.onWorkerArriveAtCEO(w.id);
-        else this.cb.onWorkerReturnToDesk(w.id);
+        else if (w.state === 'walkingBack' || w.state === 'revising') this.cb.onWorkerReturnToDesk(w.id);
       }
     }
   }
@@ -106,7 +106,7 @@ export class GameEngine {
     const sorted = [...workers].sort((a, b) => a.position.y - b.position.y);
 
     for (const w of sorted) {
-      const walking = w.state === 'walkingToCEO' || w.state === 'walkingBack';
+      const walking = w.state === 'walkingToCEO' || w.state === 'walkingBack' || w.state === 'revising';
       const bob = walking ? Math.sin(w.animTimer * 9) * 4 : 0;
 
       drawCharacterSprite(ctx, w.charId, w.position.x, w.position.y, w.direction, CHAR_HEIGHT, bob);
