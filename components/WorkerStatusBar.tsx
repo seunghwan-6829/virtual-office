@@ -12,6 +12,8 @@ const STATE_LABELS: Record<WorkerState, { text: string; color: string }> = {
   reporting: { text: '보고 중', color: '#10b981' },
   revising: { text: '수정 중', color: '#f97316' },
   walkingBack: { text: '복귀 중', color: '#8b5cf6' },
+  walkingToColleague: { text: '동료에게 이동 중', color: '#a855f7' },
+  discussing: { text: '대화 중', color: '#06b6d4' },
 };
 
 export default function WorkerStatusBar() {

@@ -11,7 +11,9 @@ export type WorkerState =
   | 'waitingAtCEO'
   | 'reporting'
   | 'revising'
-  | 'walkingBack';
+  | 'walkingBack'
+  | 'walkingToColleague'
+  | 'discussing';
 
 export type LLMProvider = 'openai' | 'anthropic' | 'google';
 export type Direction = 'up' | 'down' | 'left' | 'right';
@@ -107,8 +109,51 @@ export interface TaskRecord {
 }
 
 export interface ModalState {
-  type: 'task' | 'report' | 'manager' | 'addWorker' | 'stats' | null;
+  type: 'task' | 'report' | 'manager' | 'addWorker' | 'stats' | 'projectInput' | 'finalReport' | null;
   workerId: string | null;
+}
+
+export type ProjectStatus = 'idle' | 'planning' | 'in_progress' | 'compiling' | 'completed';
+export type PhaseStatus = 'pending' | 'in_progress' | 'completed' | 'revision';
+
+export interface WorkPhase {
+  id: string;
+  roleKey: RoleKey;
+  workerId: string;
+  task: string;
+  status: PhaseStatus;
+  result: string;
+  dependsOn: string[];
+  order: number;
+  team: 'sp' | 'da';
+}
+
+export interface AgentMessage {
+  id: string;
+  fromId: string;
+  fromName: string;
+  toId: string;
+  toName: string;
+  message: string;
+  type: 'handoff' | 'feedback' | 'question' | 'approval' | 'status';
+  timestamp: number;
+}
+
+export interface Project {
+  id: string;
+  productInfo: string;
+  status: ProjectStatus;
+  phases: WorkPhase[];
+  messages: AgentMessage[];
+  finalReport: string | null;
+  createdAt: number;
+  completedAt?: number;
+}
+
+export interface SpeechBubbleData {
+  workerId: string;
+  text: string;
+  expiresAt: number;
 }
 
 export const CHAR_UI_COLORS: string[] = [

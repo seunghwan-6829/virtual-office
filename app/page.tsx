@@ -5,15 +5,20 @@ import OfficeCanvas from '@/components/OfficeCanvas';
 import TaskAssignModal from '@/components/TaskAssignModal';
 import ReportModal from '@/components/ReportModal';
 import ManagerDashboard from '@/components/ManagerDashboard';
-import WorkerStatusBar from '@/components/WorkerStatusBar';
 import AddWorkerModal from '@/components/AddWorkerModal';
 import WorkerStatsModal from '@/components/WorkerStatsModal';
+import ProjectInputModal from '@/components/ProjectInputModal';
+import ProjectProgressPanel from '@/components/ProjectProgressPanel';
+import FinalReportModal from '@/components/FinalReportModal';
 import { useOfficeStore } from '@/lib/store';
 
 export default function Home() {
   const workers = useOfficeStore(s => s.workers);
+  const project = useOfficeStore(s => s.project);
   const completeTask = useOfficeStore(s => s.completeTask);
   const sendWorkerToCEO = useOfficeStore(s => s.sendWorkerToCEO);
+  const openProjectInput = useOfficeStore(s => s.openProjectInput);
+  const openFinalReport = useOfficeStore(s => s.openFinalReport);
 
   const executeWorkerTask = useCallback(async (workerId: string) => {
     const worker = useOfficeStore.getState().workers.find(w => w.id === workerId);
@@ -66,8 +71,7 @@ export default function Home() {
       await new Promise(r => setTimeout(r, 1500));
       sendWorkerToCEO(workerId);
     } catch {
-      const fallbackResult = `[데모 모드] API 키가 설정되지 않았거나 오류가 발생했습니다.\n\n업무 내용: "${task.instruction}"\n\n---\n예시 결과:\n${worker.role}로서 요청하신 업무를 완료했습니다.\n\n1. 핵심 분석 결과\n2. 세부 내용 정리\n3. 추가 제안 사항`;
-
+      const fallbackResult = `[데모 모드] API 키가 설정되지 않았거나 오류가 발생했습니다.\n\n업무 내용: "${task.instruction}"\n\n---\n예시 결과:\n${worker.role}로서 요청하신 업무를 완료했습니다.`;
       completeTask(workerId, fallbackResult);
       await new Promise(r => setTimeout(r, 1500));
       sendWorkerToCEO(workerId);
@@ -78,7 +82,7 @@ export default function Home() {
     const unsub = useOfficeStore.subscribe((state, prev) => {
       for (const worker of state.workers) {
         const prevWorker = prev.workers.find(w => w.id === worker.id);
-        if (prevWorker?.state !== 'working' && worker.state === 'working') {
+        if (prevWorker?.state !== 'working' && worker.state === 'working' && worker.currentTask) {
           executeWorkerTask(worker.id);
         }
       }
@@ -87,6 +91,8 @@ export default function Home() {
   }, [executeWorkerTask]);
 
   const waitingCount = workers.filter(w => w.state === 'waitingAtCEO').length;
+  const isProjectRunning = project && project.status !== 'idle' && project.status !== 'completed';
+  const isProjectDone = project?.status === 'completed';
 
   return (
     <main className="h-screen flex flex-col bg-[#0a0a0f]">
@@ -96,12 +102,28 @@ export default function Home() {
           <span className="text-gray-600 text-xs">AI Agent Simulation</span>
         </div>
         <div className="flex items-center gap-3">
+          {isProjectRunning && (
+            <span className="text-xs bg-blue-500/20 text-blue-400 px-2.5 py-1 rounded-full animate-pulse font-medium">
+              ⚡ 에이전트 자율 협업 중
+            </span>
+          )}
+          {isProjectDone && (
+            <button onClick={openFinalReport}
+              className="text-xs bg-green-500/20 text-green-400 px-2.5 py-1 rounded-full font-medium hover:bg-green-500/30 transition-colors">
+              ✅ 보고서 완성 — 클릭하여 확인
+            </button>
+          )}
           {waitingCount > 0 && (
             <span className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full animate-pulse">
               보고 대기: {waitingCount}명
             </span>
           )}
-          <span className="text-gray-500 text-xs">직원을 클릭하여 업무를 지시하세요</span>
+          {!isProjectRunning && (
+            <button onClick={openProjectInput}
+              className="text-xs bg-gradient-to-r from-blue-600 to-purple-600 text-white px-3 py-1.5 rounded-full font-bold hover:from-blue-500 hover:to-purple-500 transition-all">
+              🚀 프로젝트 시작
+            </button>
+          )}
         </div>
       </div>
 
@@ -109,13 +131,15 @@ export default function Home() {
         <OfficeCanvas />
       </div>
 
-      <WorkerStatusBar />
+      <ProjectProgressPanel />
 
       <TaskAssignModal />
       <ReportModal />
       <ManagerDashboard />
       <AddWorkerModal />
       <WorkerStatsModal />
+      <ProjectInputModal />
+      <FinalReportModal />
     </main>
   );
 }

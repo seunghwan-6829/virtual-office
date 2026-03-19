@@ -21,6 +21,15 @@ export default function OfficeCanvas() {
       updateWorker: (id: string, u: Partial<Worker>) => useOfficeStore.getState().updateWorker(id, u),
       onWorkerArriveAtCEO: (id: string) => useOfficeStore.getState().workerArriveAtCEO(id),
       onWorkerReturnToDesk: (id: string) => useOfficeStore.getState().workerReturnToDesk(id),
+      onWorkerArriveAtColleague: (id: string) => {
+        const s = useOfficeStore.getState();
+        s.workerReturnToDesk(id);
+      },
+      getSpeechBubbles: () => {
+        const s = useOfficeStore.getState();
+        s.clearExpiredBubbles();
+        return s.speechBubbles.filter(b => b.expiresAt > Date.now());
+      },
     });
 
     engineRef.current = engine;

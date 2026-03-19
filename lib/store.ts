@@ -2,8 +2,10 @@ import { create } from 'zustand';
 import {
   Worker, Task, ManagerLog, ModalState,
   WorkerState, LLMProvider, RoleKey, TaskRecord,
+  Project, WorkPhase, AgentMessage, ProjectStatus, PhaseStatus,
+  SpeechBubbleData,
 } from './types';
-import { OFFICES, MANAGER_POSITION, MANAGER_DIRECTION, getCEOWaitPosition, getOffice } from './game/office-map';
+import { OFFICES, MANAGER_POSITION, MANAGER_DIRECTION, getCEOWaitPosition, getOffice, CORRIDOR_Y } from './game/office-map';
 import { buildPathToWait, buildPathToSeat } from './game/pathfinding';
 import { saveTaskRecord } from './storage';
 
@@ -16,6 +18,8 @@ export interface OfficeStore {
   tasks: Task[];
   managerLogs: ManagerLog[];
   modal: ModalState;
+  project: Project | null;
+  speechBubbles: SpeechBubbleData[];
 
   getWorker: (id: string) => Worker | undefined;
   updateWorker: (id: string, u: Partial<Worker>) => void;
@@ -27,6 +31,8 @@ export interface OfficeStore {
   openManagerModal: (workerId?: string) => void;
   openAddWorkerModal: () => void;
   openStatsModal: (workerId: string) => void;
+  openProjectInput: () => void;
+  openFinalReport: () => void;
   closeModal: () => void;
 
   startTask: (workerId: string, instruction: string, metadata?: Record<string, unknown>) => void;
@@ -37,6 +43,18 @@ export interface OfficeStore {
   workerFinishReport: (workerId: string) => void;
   requestRevision: (workerId: string, feedback: string) => void;
   workerReturnToDesk: (workerId: string) => void;
+
+  startProject: (productInfo: string, phases: WorkPhase[]) => void;
+  setProjectStatus: (status: ProjectStatus) => void;
+  updatePhaseStatus: (phaseId: string, status: PhaseStatus) => void;
+  completePhase: (phaseId: string, result: string) => void;
+  completeProject: (finalReport: string) => void;
+  addProjectMessage: (msg: AgentMessage) => void;
+
+  setSpeechBubble: (workerId: string, text: string, durationMs: number) => void;
+  clearExpiredBubbles: () => void;
+  setWorkerState: (workerId: string, state: WorkerState) => void;
+  setWorkerAutonomousWalk: (fromWorkerId: string, toWorkerIdOrCEO: string) => void;
 
   addManagerLog: (log: ManagerLog) => void;
 }
@@ -98,6 +116,8 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
   tasks: [],
   managerLogs: [],
   modal: { type: null, workerId: null },
+  project: null,
+  speechBubbles: [],
 
   getWorker: (id) => get().workers.find(w => w.id === id),
 
@@ -129,6 +149,8 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
   openManagerModal: (workerId?) => set({ modal: { type: 'manager', workerId: workerId ?? null } }),
   openAddWorkerModal: () => set({ modal: { type: 'addWorker', workerId: null } }),
   openStatsModal: (workerId) => set({ modal: { type: 'stats', workerId } }),
+  openProjectInput: () => set({ modal: { type: 'projectInput', workerId: null } }),
+  openFinalReport: () => set({ modal: { type: 'finalReport', workerId: null } }),
 
   closeModal: () => {
     const { modal, workers } = get();
@@ -289,6 +311,94 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
         ),
       }));
     }
+  },
+
+  startProject: (productInfo, phases) => set({
+    project: {
+      id: uid(), productInfo, status: 'in_progress',
+      phases, messages: [], finalReport: null, createdAt: Date.now(),
+    },
+  }),
+
+  setProjectStatus: (status) => set(s => ({
+    project: s.project ? { ...s.project, status } : null,
+  })),
+
+  updatePhaseStatus: (phaseId, status) => set(s => ({
+    project: s.project ? {
+      ...s.project,
+      phases: s.project.phases.map(p => p.id === phaseId ? { ...p, status } : p),
+    } : null,
+  })),
+
+  completePhase: (phaseId, result) => set(s => ({
+    project: s.project ? {
+      ...s.project,
+      phases: s.project.phases.map(p =>
+        p.id === phaseId ? { ...p, status: 'completed' as PhaseStatus, result } : p
+      ),
+    } : null,
+  })),
+
+  completeProject: (finalReport) => set(s => ({
+    project: s.project ? {
+      ...s.project, status: 'completed' as ProjectStatus,
+      finalReport, completedAt: Date.now(),
+    } : null,
+  })),
+
+  addProjectMessage: (msg) => set(s => ({
+    project: s.project ? {
+      ...s.project, messages: [...s.project.messages, msg],
+    } : null,
+  })),
+
+  setSpeechBubble: (workerId, text, durationMs) => set(s => ({
+    speechBubbles: [
+      ...s.speechBubbles.filter(b => b.workerId !== workerId),
+      { workerId, text, expiresAt: Date.now() + durationMs },
+    ],
+  })),
+
+  clearExpiredBubbles: () => set(s => ({
+    speechBubbles: s.speechBubbles.filter(b => b.expiresAt > Date.now()),
+  })),
+
+  setWorkerState: (workerId, state) => set(s => ({
+    workers: s.workers.map(w => w.id === workerId ? { ...w, state } : w),
+  })),
+
+  setWorkerAutonomousWalk: (fromWorkerId, toWorkerIdOrCEO) => {
+    const from = get().getWorker(fromWorkerId);
+    if (!from) return;
+
+    let targetPos;
+    if (toWorkerIdOrCEO === 'CEO') {
+      targetPos = getCEOWaitPosition(0);
+    } else {
+      const to = get().getWorker(toWorkerIdOrCEO);
+      if (!to) return;
+      const toOffice = getOffice(to.officeId);
+      targetPos = toOffice ? toOffice.door : to.position;
+    }
+
+    const fromOffice = getOffice(from.officeId);
+    const startDoor = fromOffice ? fromOffice.door : from.position;
+
+    const path = [
+      startDoor,
+      { x: startDoor.x, y: CORRIDOR_Y },
+      { x: targetPos.x, y: CORRIDOR_Y },
+      targetPos,
+    ];
+
+    set(s => ({
+      workers: s.workers.map(w =>
+        w.id === fromWorkerId
+          ? { ...w, state: 'walkingToColleague' as WorkerState, path, pathIndex: 0, animTimer: 0 }
+          : w
+      ),
+    }));
   },
 
   addManagerLog: (log) => set(s => ({ managerLogs: [...s.managerLogs, log] })),

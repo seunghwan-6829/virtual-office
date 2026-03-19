@@ -13,6 +13,8 @@ export interface EngineCallbacks {
   updateWorker: (id: string, updates: Partial<Worker>) => void;
   onWorkerArriveAtCEO: (workerId: string) => void;
   onWorkerReturnToDesk: (workerId: string) => void;
+  onWorkerArriveAtColleague: (workerId: string) => void;
+  getSpeechBubbles: () => { workerId: string; text: string }[];
 }
 
 export class GameEngine {
@@ -81,7 +83,8 @@ export class GameEngine {
   private update(dt: number) {
     const workers = this.cb.getWorkers();
     for (const w of workers) {
-      if (w.state !== 'walkingToCEO' && w.state !== 'walkingBack' && w.state !== 'revising') continue;
+      const isMoving = w.state === 'walkingToCEO' || w.state === 'walkingBack' || w.state === 'revising' || w.state === 'walkingToColleague';
+      if (!isMoving) continue;
       const next = updateCharacterMovement(w, dt);
       this.cb.updateWorker(w.id, {
         position: next.position,
@@ -91,6 +94,7 @@ export class GameEngine {
       });
       if (isPathComplete(next)) {
         if (w.state === 'walkingToCEO') this.cb.onWorkerArriveAtCEO(w.id);
+        else if (w.state === 'walkingToColleague') this.cb.onWorkerArriveAtColleague(w.id);
         else if (w.state === 'walkingBack' || w.state === 'revising') this.cb.onWorkerReturnToDesk(w.id);
       }
     }
@@ -105,24 +109,27 @@ export class GameEngine {
     const workers = this.cb.getWorkers();
     const sorted = [...workers].sort((a, b) => a.position.y - b.position.y);
 
+    const bubbles = this.cb.getSpeechBubbles();
+    const bubbleMap = new Map(bubbles.map(b => [b.workerId, b.text]));
+
     for (const w of sorted) {
-      const walking = w.state === 'walkingToCEO' || w.state === 'walkingBack' || w.state === 'revising';
+      const walking = w.state === 'walkingToCEO' || w.state === 'walkingBack' || w.state === 'revising' || w.state === 'walkingToColleague';
       const bob = walking ? Math.sin(w.animTimer * 9) * 4 : 0;
 
       drawCharacterSprite(ctx, w.charId, w.position.x, w.position.y, w.direction, CHAR_HEIGHT, bob);
       drawCharacterLabel(ctx, w.position.x, w.position.y, w.name, w.title, CHAR_HEIGHT);
 
-      if (w.state === 'working' && w.currentTask) {
-        const elapsed = (Date.now() - w.currentTask.createdAt) / 1000;
-        drawProgressBar(ctx, w.position.x, w.position.y, Math.min(elapsed / 20, 0.95), CHAR_HEIGHT);
+      if (w.state === 'working') {
+        drawProgressBar(ctx, w.position.x, w.position.y, Math.min((this.clock % 20) / 20, 0.95), CHAR_HEIGHT);
       }
 
       if (w.state === 'waitingAtCEO') {
         drawReportWaiting(ctx, w.position.x, w.position.y, this.clock, CHAR_HEIGHT);
       }
 
-      if (w.isManager && w.state === 'idle') {
-        drawSpeechBubble(ctx, w.position.x, w.position.y, '📊 관리자', CHAR_HEIGHT);
+      const bubble = bubbleMap.get(w.id);
+      if (bubble) {
+        drawSpeechBubble(ctx, w.position.x, w.position.y, bubble, CHAR_HEIGHT);
       }
     }
   }
