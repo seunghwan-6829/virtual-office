@@ -16,7 +16,8 @@ export default function ManagerDashboard() {
 
   if (modal.type !== 'manager') return null;
 
-  const manager = workers.find(w => w.roleKey === 'manager' && !w.isManager);
+  const clickedPerson = modal.workerId ? workers.find(w => w.id === modal.workerId) : null;
+  const displayPerson = clickedPerson ?? workers.find(w => w.roleKey === 'manager' && !w.isManager);
   const regularWorkers = workers.filter(w => !w.isManager && w.roleKey !== 'manager');
   const allRecords = loadTaskRecords();
   const completed = managerLogs.length;
@@ -38,16 +39,16 @@ export default function ManagerDashboard() {
       <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-3xl mx-4 overflow-hidden max-h-[85vh] flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-gray-700 flex items-center gap-3 flex-shrink-0">
-          {manager && (
+          {displayPerson && (
             <div className="w-11 h-11 rounded-full overflow-hidden flex-shrink-0 border-2"
-              style={{ borderColor: getCharColor(manager.charId) }}>
-              <img src={`/sprites/characters/CH_${manager.charId}_Front.png`} alt={manager.name}
+              style={{ borderColor: getCharColor(displayPerson.charId) }}>
+              <img src={`/sprites/characters/CH_${displayPerson.charId}_Front.png`} alt={displayPerson.name}
                 className="w-full h-full object-cover" />
             </div>
           )}
           <div className="flex-1">
-            <h3 className="text-white font-bold">{manager?.name ?? '윤성현'} <span className="text-gray-500 font-normal">중간관리자</span></h3>
-            <p className="text-gray-400 text-xs">프로세스 관리 · 데이터 분석</p>
+            <h3 className="text-white font-bold">{displayPerson?.name ?? '관리자'} <span className="text-gray-500 font-normal">{displayPerson?.title ?? '관리자'}</span></h3>
+            <p className="text-gray-400 text-xs">{displayPerson?.isManager ? '전체 총괄 · 보고 확인' : '프로세스 관리 · 데이터 분석'}</p>
           </div>
           <button onClick={closeModal} className="text-gray-500 hover:text-white transition-colors">✕</button>
         </div>

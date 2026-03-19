@@ -15,7 +15,7 @@ export default function OfficeCanvas() {
 
     const engine = new GameEngine(canvas, {
       onWorkerClick: (id: string) => useOfficeStore.getState().openTaskModal(id),
-      onManagerClick: () => useOfficeStore.getState().openManagerModal(),
+      onManagerClick: (id: string) => useOfficeStore.getState().openManagerModal(id),
       onWaitingWorkerClick: (id: string) => useOfficeStore.getState().workerStartReport(id),
       getWorkers: () => useOfficeStore.getState().workers,
       updateWorker: (id: string, u: Partial<Worker>) => useOfficeStore.getState().updateWorker(id, u),

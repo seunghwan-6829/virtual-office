@@ -7,7 +7,7 @@ import { updateCharacterMovement, isPathComplete } from './character';
 
 export interface EngineCallbacks {
   onWorkerClick: (workerId: string) => void;
-  onManagerClick: () => void;
+  onManagerClick: (workerId: string) => void;
   onWaitingWorkerClick: (workerId: string) => void;
   getWorkers: () => Worker[];
   updateWorker: (id: string, updates: Partial<Worker>) => void;
@@ -160,7 +160,7 @@ export class GameEngine {
     const { x, y } = this.canvasXY(e);
     const w = this.hitTest(x, y);
     if (!w) return;
-    if (w.isManager || w.roleKey === 'manager') this.cb.onManagerClick();
+    if (w.isManager || w.roleKey === 'manager') this.cb.onManagerClick(w.id);
     else if (w.state === 'idle') this.cb.onWorkerClick(w.id);
     else if (w.state === 'waitingAtCEO') this.cb.onWaitingWorkerClick(w.id);
   };

@@ -24,7 +24,7 @@ export interface OfficeStore {
 
   openTaskModal: (workerId: string) => void;
   openReportModal: (workerId: string) => void;
-  openManagerModal: () => void;
+  openManagerModal: (workerId?: string) => void;
   openAddWorkerModal: () => void;
   openStatsModal: (workerId: string) => void;
   closeModal: () => void;
@@ -123,7 +123,7 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
   },
 
   openReportModal: (workerId) => set({ modal: { type: 'report', workerId } }),
-  openManagerModal: () => set({ modal: { type: 'manager', workerId: null } }),
+  openManagerModal: (workerId?) => set({ modal: { type: 'manager', workerId: workerId ?? null } }),
   openAddWorkerModal: () => set({ modal: { type: 'addWorker', workerId: null } }),
   openStatsModal: (workerId) => set({ modal: { type: 'stats', workerId } }),
 
