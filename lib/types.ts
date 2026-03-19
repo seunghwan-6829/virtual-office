@@ -1,6 +1,6 @@
 export const BG_WIDTH = 2752;
 export const BG_HEIGHT = 1536;
-export const CHAR_HEIGHT = 128;
+export const CHAR_HEIGHT = 155;
 export const MOVE_SPEED = 320;
 
 export type WorkerState =

@@ -30,9 +30,9 @@ export async function preloadAssets(): Promise<void> {
 
 function getSpriteKey(charId: number, direction: Direction): { key: string; flip: boolean } {
   switch (direction) {
-    case 'up':
+    case 'down':
       return { key: `/sprites/characters/CH_${charId}_Front.png`, flip: false };
-    case 'down': {
+    case 'up': {
       const back = charId === 7 ? 'CH_7_Back7.png' : `CH_${charId}_Back.png`;
       return { key: `/sprites/characters/${back}`, flip: false };
     }
@@ -65,6 +65,11 @@ export function drawCharacterSprite(
   ctx.restore();
 }
 
+/* ---- label height constant for positioning overlays above ---- */
+const LABEL_TOTAL_H = 66;
+const LABEL_GAP_BELOW = 8;
+export const LABEL_TOP_OFFSET = LABEL_TOTAL_H + LABEL_GAP_BELOW;
+
 export function drawCharacterLabel(
   ctx: CanvasRenderingContext2D,
   x: number, y: number,
@@ -73,35 +78,37 @@ export function drawCharacterLabel(
 ) {
   ctx.save();
 
-  const titleFont = 'bold 15px sans-serif';
-  const nameFont = 'bold 20px sans-serif';
-  const gap = 3;
+  const titleFont = 'bold 18px sans-serif';
+  const nameFont = 'bold 24px sans-serif';
+  const gap = 4;
 
   ctx.font = titleFont;
   const titleW = ctx.measureText(title).width;
   ctx.font = nameFont;
   const nameW = ctx.measureText(name).width;
-  const maxW = Math.max(titleW, nameW) + 16;
+  const maxW = Math.max(titleW, nameW) + 20;
 
-  const totalH = 22 + gap + 26;
+  const titleH = 24;
+  const nameH = 30;
+  const totalH = titleH + gap + nameH;
   const bx = x - maxW / 2;
-  const by = y - charHeight - totalH - 6;
+  const by = y - charHeight - totalH - LABEL_GAP_BELOW;
 
-  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillStyle = 'rgba(0,0,0,0.75)';
   ctx.beginPath();
-  ctx.roundRect(bx, by, maxW, totalH, 6);
+  ctx.roundRect(bx, by, maxW, totalH, 7);
   ctx.fill();
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
   ctx.font = titleFont;
-  ctx.fillStyle = '#aab';
-  ctx.fillText(title, x, by + 11);
+  ctx.fillStyle = '#9ca3af';
+  ctx.fillText(title, x, by + titleH / 2);
 
   ctx.font = nameFont;
   ctx.fillStyle = '#fff';
-  ctx.fillText(name, x, by + 22 + gap + 13);
+  ctx.fillText(name, x, by + titleH + gap + nameH / 2);
 
   ctx.restore();
 }
@@ -113,12 +120,12 @@ export function drawSpeechBubble(
   charHeight: number = CHAR_HEIGHT,
 ) {
   ctx.save();
-  ctx.font = 'bold 18px sans-serif';
+  ctx.font = 'bold 20px sans-serif';
   const metrics = ctx.measureText(text);
-  const bw = metrics.width + 22;
-  const bh = 32;
+  const bw = metrics.width + 26;
+  const bh = 36;
   const bx = x - bw / 2;
-  const by = y - charHeight - 90;
+  const by = y - charHeight - LABEL_TOP_OFFSET - bh - 14;
 
   ctx.fillStyle = '#fff';
   ctx.shadowColor = 'rgba(0,0,0,0.3)';
@@ -149,32 +156,32 @@ export function drawReportWaiting(
 ) {
   ctx.save();
   const text = '💡 보고 대기';
-  ctx.font = 'bold 20px sans-serif';
-  const tw = ctx.measureText(text).width + 24;
-  const bh = 36;
+  ctx.font = 'bold 22px sans-serif';
+  const tw = ctx.measureText(text).width + 28;
+  const bh = 40;
   const bx = x - tw / 2;
-  const by = y - charHeight - 100;
+  const by = y - charHeight - LABEL_TOP_OFFSET - bh - 16;
 
   const pulse = 0.85 + Math.sin(timer * 3) * 0.15;
   ctx.globalAlpha = pulse;
 
   ctx.fillStyle = '#fffbe6';
   ctx.shadowColor = 'rgba(251,191,36,0.5)';
-  ctx.shadowBlur = 12;
+  ctx.shadowBlur = 14;
   ctx.beginPath();
-  ctx.roundRect(bx, by, tw, bh, 9);
+  ctx.roundRect(bx, by, tw, bh, 10);
   ctx.fill();
   ctx.shadowBlur = 0;
 
   ctx.strokeStyle = '#f59e0b';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 2.5;
   ctx.beginPath();
-  ctx.roundRect(bx, by, tw, bh, 9);
+  ctx.roundRect(bx, by, tw, bh, 10);
   ctx.stroke();
 
   ctx.beginPath();
   ctx.moveTo(x - 7, by + bh);
-  ctx.lineTo(x, by + bh + 11);
+  ctx.lineTo(x, by + bh + 12);
   ctx.lineTo(x + 7, by + bh);
   ctx.fillStyle = '#fffbe6';
   ctx.fill();
@@ -194,18 +201,39 @@ export function drawProgressBar(
   progress: number,
   charHeight: number = CHAR_HEIGHT,
 ) {
-  const barW = 70;
-  const barH = 9;
+  const barW = 100;
+  const barH = 14;
   const bx = x - barW / 2;
-  const by = y - charHeight - 14;
+  const by = y - charHeight - LABEL_TOP_OFFSET - barH - 16;
 
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.save();
+
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
   ctx.beginPath();
-  ctx.roundRect(bx - 2, by - 2, barW + 4, barH + 4, 4);
+  ctx.roundRect(bx - 3, by - 3, barW + 6, barH + 6, 5);
   ctx.fill();
 
-  ctx.fillStyle = '#444';
-  ctx.fillRect(bx, by, barW, barH);
-  ctx.fillStyle = '#4ade80';
-  ctx.fillRect(bx, by, barW * Math.min(progress, 1), barH);
+  ctx.fillStyle = '#374151';
+  ctx.beginPath();
+  ctx.roundRect(bx, by, barW, barH, 3);
+  ctx.fill();
+
+  const grd = ctx.createLinearGradient(bx, 0, bx + barW, 0);
+  grd.addColorStop(0, '#22c55e');
+  grd.addColorStop(1, '#4ade80');
+  ctx.fillStyle = grd;
+  const fillW = barW * Math.min(progress, 1);
+  if (fillW > 0) {
+    ctx.beginPath();
+    ctx.roundRect(bx, by, fillW, barH, 3);
+    ctx.fill();
+  }
+
+  ctx.font = 'bold 11px sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`${Math.round(progress * 100)}%`, x, by + barH / 2);
+
+  ctx.restore();
 }

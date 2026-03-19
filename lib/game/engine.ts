@@ -107,7 +107,7 @@ export class GameEngine {
 
     for (const w of sorted) {
       const walking = w.state === 'walkingToCEO' || w.state === 'walkingBack';
-      const bob = walking ? Math.sin(w.animTimer * 9) * 3 : 0;
+      const bob = walking ? Math.sin(w.animTimer * 9) * 4 : 0;
 
       drawCharacterSprite(ctx, w.charId, w.position.x, w.position.y, w.direction, CHAR_HEIGHT, bob);
       drawCharacterLabel(ctx, w.position.x, w.position.y, w.name, w.title, CHAR_HEIGHT);
@@ -140,7 +140,7 @@ export class GameEngine {
   private hitTest(cx: number, cy: number): Worker | null {
     const workers = this.cb.getWorkers();
     const sorted = [...workers].sort((a, b) => b.position.y - a.position.y);
-    const hr = CHAR_HEIGHT * 0.45;
+    const hr = CHAR_HEIGHT * 0.5;
     for (const w of sorted) {
       if (Math.abs(cx - w.position.x) < hr && Math.abs(cy - (w.position.y - CHAR_HEIGHT * 0.4)) < hr) {
         return w;
