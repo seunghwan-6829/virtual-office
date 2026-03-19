@@ -37,9 +37,9 @@ function getSpriteKey(charId: number, direction: Direction): { key: string; flip
       return { key: `/sprites/characters/${back}`, flip: false };
     }
     case 'left':
-      return { key: `/sprites/characters/CH_${charId}_Left.png`, flip: false };
-    case 'right':
       return { key: `/sprites/characters/CH_${charId}_Left.png`, flip: true };
+    case 'right':
+      return { key: `/sprites/characters/CH_${charId}_Left.png`, flip: false };
   }
 }
 
