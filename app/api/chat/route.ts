@@ -1,5 +1,6 @@
 import { streamText } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
+import { google } from '@ai-sdk/google';
 import { getRoleSystemPrompt } from '@/lib/role-prompts';
 import { RoleKey } from '@/lib/types';
 
@@ -7,7 +8,7 @@ export const runtime = 'edge';
 
 export async function POST(req: Request) {
   try {
-    const { instruction, role, roleKey, model, previousResult, revisionFeedback } = await req.json();
+    const { instruction, role, roleKey, model, provider, previousResult, revisionFeedback } = await req.json();
 
     let systemPrompt = getRoleSystemPrompt((roleKey || 'spPlanner') as RoleKey, role);
 
@@ -17,8 +18,12 @@ export async function POST(req: Request) {
       systemPrompt += '\n\n이전 결과를 기반으로 수정 요청사항을 반영하세요.';
     }
 
+    const llmModel = provider === 'google'
+      ? google(model || 'gemini-2.0-flash-exp')
+      : anthropic(model || 'claude-opus-4-6');
+
     const result = await streamText({
-      model: anthropic(model || 'claude-opus-4-6'),
+      model: llmModel,
       system: systemPrompt,
       prompt,
     });

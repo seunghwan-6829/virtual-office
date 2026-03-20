@@ -6,8 +6,8 @@ import { runAutonomousProject, TeamSelection } from '@/lib/orchestrator';
 
 const SP_MEMBERS = [
   { name: '김하늘', role: '기획' },
-  { name: '박지민', role: '후킹' },
-  { name: '이서연', role: '카피' },
+  { name: '이서연', role: '카피·후킹' },
+  { name: '박지민', role: '이미지 (Gemini)' },
   { name: '최유진', role: '전환최적화' },
 ];
 

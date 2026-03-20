@@ -21,7 +21,7 @@ export type Direction = 'up' | 'down' | 'left' | 'right';
 export type RoleKey =
   | 'spPlanner'
   | 'spCopy'
-  | 'spHook'
+  | 'spImage'
   | 'spCRO'
   | 'daStrategy'
   | 'daCopy'

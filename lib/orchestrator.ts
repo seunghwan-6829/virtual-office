@@ -7,8 +7,8 @@ function uid(): string {
 
 const SP_WORKFLOW: { roleKey: RoleKey; order: number; taskTemplate: string; wave: number }[] = [
   { roleKey: 'spPlanner', order: 0, wave: 1, taskTemplate: '상세페이지 전체 구성을 기획해주세요. 섹션별 목적, 핵심 메시지, 레이아웃 가이드를 포함하세요.' },
-  { roleKey: 'spHook',    order: 1, wave: 2, taskTemplate: '기획안을 기반으로 강력한 후킹 문구 5개 이상과 상단 오프닝 전략을 작성해주세요.' },
-  { roleKey: 'spCopy',    order: 2, wave: 2, taskTemplate: '기획안을 기반으로 전체 상세페이지 카피를 작성해주세요. 헤드라인, 서브헤드, 본문, CTA를 포함하세요.' },
+  { roleKey: 'spCopy',    order: 1, wave: 2, taskTemplate: '기획안을 기반으로 전체 상세페이지 카피 + 후킹 문구를 작성해주세요. 헤드라인, 서브헤드, 본문, CTA, 그리고 스크롤을 멈추게 하는 후킹 문구 5개 이상을 포함하세요.' },
+  { roleKey: 'spImage',   order: 2, wave: 2, taskTemplate: '기획안을 기반으로 상세페이지에 필요한 제품 이미지를 기획해주세요. 이미지 유형별 컨셉, 구도, 색감 방향, Gemini 3 Pro용 이미지 생성 프롬프트(영어)를 포함하세요.' },
   { roleKey: 'spCRO',     order: 3, wave: 2, taskTemplate: '기획안을 기반으로 전환율 최적화 관점에서 구조 피드백과 CTA 개선안을 제시해주세요.' },
 ];
 
@@ -85,12 +85,12 @@ function getLeadResult(phases: WorkPhase[], phase: WorkPhase): string {
   }).join('\n\n');
 }
 
-async function callLLM(instruction: string, worker: { role: string; roleKey: string; model: string; name: string; title: string }): Promise<string> {
+async function callLLM(instruction: string, worker: { role: string; roleKey: string; model: string; name: string; title: string; provider?: string }): Promise<string> {
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instruction, role: worker.role, roleKey: worker.roleKey, model: worker.model }),
+      body: JSON.stringify({ instruction, role: worker.role, roleKey: worker.roleKey, model: worker.model, provider: worker.provider }),
     });
     if (!res.ok) throw new Error(`${res.status}`);
     const reader = res.body?.getReader();
@@ -145,6 +145,7 @@ async function compileReport(productInfo: string, phases: WorkPhase[]): Promise<
     model: mgr?.model ?? 'claude-opus-4-6',
     name: mgr?.name ?? '윤성현',
     title: mgr?.title ?? '중간관리자',
+    provider: mgr?.provider ?? 'anthropic',
   });
 }
 

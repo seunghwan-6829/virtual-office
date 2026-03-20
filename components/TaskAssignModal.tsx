@@ -3,7 +3,7 @@
 import { useOfficeStore } from '@/lib/store';
 import SPPlannerModal from './role-modals/SPPlannerModal';
 import SPCopyModal from './role-modals/SPCopyModal';
-import SPHookModal from './role-modals/SPHookModal';
+import SPImageModal from './role-modals/SPImageModal';
 import SPCROModal from './role-modals/SPCROModal';
 import DAStrategyModal from './role-modals/DAStrategyModal';
 import DACopyModal from './role-modals/DACopyModal';
@@ -24,8 +24,8 @@ export default function TaskAssignModal() {
       return <SPPlannerModal worker={worker} onClose={closeModal} />;
     case 'spCopy':
       return <SPCopyModal worker={worker} onClose={closeModal} />;
-    case 'spHook':
-      return <SPHookModal worker={worker} onClose={closeModal} />;
+    case 'spImage':
+      return <SPImageModal worker={worker} onClose={closeModal} />;
     case 'spCRO':
       return <SPCROModal worker={worker} onClose={closeModal} />;
     case 'daStrategy':

@@ -7,8 +7,8 @@ import { OFFICES } from '@/lib/game/office-map';
 
 const ROLE_OPTIONS: { key: RoleKey; title: string; role: string }[] = [
   { key: 'spPlanner', title: '상페 기획', role: '상세페이지 기획 (구성·레이아웃·스토리보드)' },
-  { key: 'spCopy', title: '상페 카피', role: '상세페이지 카피라이터 (헤드라인·본문·CTA)' },
-  { key: 'spHook', title: '상페 후킹', role: '상세페이지 후킹 전문 (고객 유인·pain point)' },
+  { key: 'spCopy', title: '상페 카피·후킹', role: '상세페이지 카피+후킹 (헤드라인·본문·CTA·후킹문구)' },
+  { key: 'spImage', title: '상페 이미지', role: '상세페이지 이미지 생성 (Gemini 3 Pro)' },
   { key: 'spCRO', title: '상페 전환최적화', role: '상세페이지 CRO (전환율 분석·A/B테스트)' },
   { key: 'daStrategy', title: 'DA 전략기획', role: 'DA 전략기획 (캠페인·타겟팅·매체선정)' },
   { key: 'daCopy', title: 'DA 카피', role: 'DA 광고카피 (소재 헤드라인·본문·CTA)' },

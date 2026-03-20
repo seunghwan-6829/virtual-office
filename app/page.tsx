@@ -38,6 +38,7 @@ export default function Home() {
           role: worker.role,
           roleKey: worker.roleKey,
           model: worker.model,
+          provider: worker.provider,
           previousResult: isRevision ? task.result : undefined,
           revisionFeedback: isRevision ? lastRevision.feedback : undefined,
         }),
