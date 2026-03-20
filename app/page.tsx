@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import OfficeCanvas from '@/components/OfficeCanvas';
 import TaskAssignModal from '@/components/TaskAssignModal';
 import ReportModal from '@/components/ReportModal';
@@ -11,15 +11,35 @@ import ProjectInputModal from '@/components/ProjectInputModal';
 import ProjectProgressPanel from '@/components/ProjectProgressPanel';
 import FinalReportModal from '@/components/FinalReportModal';
 import WorkerPeekCard from '@/components/WorkerPeekCard';
+import AgentChatPanel from '@/components/AgentChatPanel';
+import LiveStreamPanel from '@/components/LiveStreamPanel';
+import PersonalityModal from '@/components/PersonalityModal';
+import TemplateSelector from '@/components/TemplateSelector';
+import ABCompareView from '@/components/ABCompareView';
+import ResultEditor from '@/components/ResultEditor';
+import CompetitorModal from '@/components/CompetitorModal';
+import TimelineReplay from '@/components/TimelineReplay';
 import { useOfficeStore } from '@/lib/store';
+import { ProjectTemplate, CompetitorInput } from '@/lib/types';
+import { loadProjectHistory } from '@/lib/storage';
 
 export default function Home() {
   const workers = useOfficeStore(s => s.workers);
   const project = useOfficeStore(s => s.project);
+  const projectQueue = useOfficeStore(s => s.projectQueue);
   const completeTask = useOfficeStore(s => s.completeTask);
   const sendWorkerToCEO = useOfficeStore(s => s.sendWorkerToCEO);
   const openProjectInput = useOfficeStore(s => s.openProjectInput);
   const openFinalReport = useOfficeStore(s => s.openFinalReport);
+  const openTimeline = useOfficeStore(s => s.openTimelineModal);
+  const openABCompare = useOfficeStore(s => s.openABCompare);
+  const setChatOpen = useOfficeStore(s => s.setChatPanelOpen);
+  const updateWorkerStreaming = useOfficeStore(s => s.updateWorkerStreaming);
+  const [historyCount, setHistoryCount] = useState(0);
+
+  useEffect(() => {
+    try { setHistoryCount(loadProjectHistory().length); } catch { /* noop */ }
+  }, [project?.status]);
 
   const executeWorkerTask = useCallback(async (workerId: string) => {
     const worker = useOfficeStore.getState().workers.find(w => w.id === workerId);
@@ -55,6 +75,7 @@ export default function Home() {
         const { done, value } = await reader.read();
         if (done) break;
         result += decoder.decode(value, { stream: true });
+        updateWorkerStreaming(workerId, result);
       }
 
       if (isRevision) {
@@ -73,12 +94,12 @@ export default function Home() {
       await new Promise(r => setTimeout(r, 1500));
       sendWorkerToCEO(workerId);
     } catch {
-      const fallbackResult = `[데모 모드] API 키가 설정되지 않았거나 오류가 발생했습니다.\n\n업무 내용: "${task.instruction}"\n\n---\n예시 결과:\n${worker.role}로서 요청하신 업무를 완료했습니다.`;
+      const fallbackResult = `[데모 모드] API 키가 설정되지 않았거나 오류가 발생했습니다.\n\n업무 내용: "${task.instruction}"`;
       completeTask(workerId, fallbackResult);
       await new Promise(r => setTimeout(r, 1500));
       sendWorkerToCEO(workerId);
     }
-  }, [completeTask, sendWorkerToCEO]);
+  }, [completeTask, sendWorkerToCEO, updateWorkerStreaming]);
 
   useEffect(() => {
     const unsub = useOfficeStore.subscribe((state, prev) => {
@@ -95,25 +116,58 @@ export default function Home() {
   const waitingCount = workers.filter(w => w.state === 'waitingAtCEO').length;
   const isProjectRunning = project && project.status !== 'idle' && project.status !== 'completed';
   const isProjectDone = project?.status === 'completed';
+  const hasAB = project?.phases.some(p => p.abVariant === 'B');
+
+  const handleTemplateSelect = (t: ProjectTemplate) => {
+    const fn = (window as unknown as Record<string, unknown>).__applyTemplate;
+    if (typeof fn === 'function') (fn as (t: ProjectTemplate) => void)(t);
+  };
+
+  const handleCompetitorComplete = (data: CompetitorInput) => {
+    const fn = (window as unknown as Record<string, unknown>).__applyCompetitor;
+    if (typeof fn === 'function') (fn as (d: CompetitorInput) => void)(data);
+  };
 
   return (
     <main className="h-screen flex flex-col bg-[#0a0a0f]">
+      {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800">
         <div className="flex items-center gap-3">
           <h1 className="text-white font-bold text-sm tracking-wide">VIRTUAL OFFICE</h1>
           <span className="text-gray-600 text-xs">AI Agent Simulation</span>
+          {historyCount > 0 && (
+            <span className="text-amber-400/50 text-xs" title={`${historyCount}건의 프로젝트 학습 데이터`}>🧠 {historyCount}</span>
+          )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {isProjectRunning && (
+            <button onClick={() => setChatOpen(true)}
+              className="text-xs bg-cyan-500/20 text-cyan-400 px-2.5 py-1 rounded-full font-medium hover:bg-cyan-500/30 transition-colors">
+              💬 채팅
+            </button>
+          )}
           {isProjectRunning && (
             <span className="text-xs bg-blue-500/20 text-blue-400 px-2.5 py-1 rounded-full animate-pulse font-medium">
               ⚡ 에이전트 자율 협업 중
             </span>
           )}
           {isProjectDone && (
-            <button onClick={openFinalReport}
-              className="text-xs bg-green-500/20 text-green-400 px-2.5 py-1 rounded-full font-medium hover:bg-green-500/30 transition-colors">
-              ✅ 보고서 완성 — 클릭하여 확인
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button onClick={openFinalReport}
+                className="text-xs bg-green-500/20 text-green-400 px-2.5 py-1 rounded-full font-medium hover:bg-green-500/30 transition-colors">
+                ✅ 보고서
+              </button>
+              {hasAB && (
+                <button onClick={() => openABCompare()}
+                  className="text-xs bg-purple-500/20 text-purple-400 px-2.5 py-1 rounded-full font-medium hover:bg-purple-500/30 transition-colors">
+                  A/B
+                </button>
+              )}
+              <button onClick={openTimeline}
+                className="text-xs bg-gray-500/20 text-gray-400 px-2.5 py-1 rounded-full font-medium hover:bg-gray-500/30 transition-colors">
+                🎬
+              </button>
+            </div>
           )}
           {waitingCount > 0 && (
             <span className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full animate-pulse">
@@ -126,15 +180,23 @@ export default function Home() {
               🚀 프로젝트 시작
             </button>
           )}
+          {projectQueue.length > 0 && (
+            <span className="text-gray-500 text-xs" title="완료된 프로젝트">📁 {projectQueue.length}</span>
+          )}
         </div>
       </div>
 
+      {/* Canvas */}
       <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
         <OfficeCanvas />
       </div>
 
+      {/* Panels */}
       <ProjectProgressPanel />
+      <AgentChatPanel />
+      <LiveStreamPanel />
 
+      {/* Modals */}
       <TaskAssignModal />
       <ReportModal />
       <ManagerDashboard />
@@ -143,6 +205,12 @@ export default function Home() {
       <ProjectInputModal />
       <FinalReportModal />
       <WorkerPeekCard />
+      <PersonalityModal />
+      <TemplateSelector onSelect={handleTemplateSelect} />
+      <ABCompareView />
+      <ResultEditor />
+      <CompetitorModal onComplete={handleCompetitorComplete} />
+      <TimelineReplay />
     </main>
   );
 }

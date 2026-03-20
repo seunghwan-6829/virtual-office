@@ -3,7 +3,8 @@ import {
   Worker, Task, ManagerLog, ModalState,
   WorkerState, LLMProvider, RoleKey, TaskRecord,
   Project, WorkPhase, AgentMessage, ProjectStatus, PhaseStatus,
-  SpeechBubbleData,
+  SpeechBubbleData, AgentPersonality, DEFAULT_PERSONALITY,
+  TimelineEvent, PROJECT_COLORS,
 } from './types';
 import { OFFICES, MANAGER_POSITION, MANAGER_DIRECTION, getCEOWaitPosition, getOffice, CORRIDOR_Y } from './game/office-map';
 import { buildPathToWait, buildPathToSeat } from './game/pathfinding';
@@ -19,8 +20,12 @@ export interface OfficeStore {
   managerLogs: ManagerLog[];
   modal: ModalState;
   project: Project | null;
+  projectQueue: Project[];
   speechBubbles: SpeechBubbleData[];
   peekWorkerId: string | null;
+  timeline: TimelineEvent[];
+  chatPanelOpen: boolean;
+  liveStreamWorkerId: string | null;
 
   getWorker: (id: string) => Worker | undefined;
   updateWorker: (id: string, u: Partial<Worker>) => void;
@@ -34,6 +39,12 @@ export interface OfficeStore {
   openStatsModal: (workerId: string) => void;
   openProjectInput: () => void;
   openFinalReport: () => void;
+  openPersonalityModal: (workerId: string) => void;
+  openTemplatesModal: () => void;
+  openABCompare: (extra?: Record<string, unknown>) => void;
+  openResultEditor: (workerId: string) => void;
+  openCompetitorModal: () => void;
+  openTimelineModal: () => void;
   closeModal: () => void;
 
   startTask: (workerId: string, instruction: string, metadata?: Record<string, unknown>) => void;
@@ -45,20 +56,26 @@ export interface OfficeStore {
   requestRevision: (workerId: string, feedback: string) => void;
   workerReturnToDesk: (workerId: string) => void;
 
-  startProject: (productInfo: string, phases: WorkPhase[]) => void;
+  startProject: (productInfo: string, phases: WorkPhase[], opts?: Partial<Project>) => void;
   setProjectStatus: (status: ProjectStatus) => void;
   updatePhaseStatus: (phaseId: string, status: PhaseStatus) => void;
   completePhase: (phaseId: string, result: string) => void;
   completeProject: (finalReport: string) => void;
   addProjectMessage: (msg: AgentMessage) => void;
+  updatePhaseStreaming: (phaseId: string, text: string) => void;
 
   setSpeechBubble: (workerId: string, text: string, durationMs: number) => void;
   clearExpiredBubbles: () => void;
   setWorkerState: (workerId: string, state: WorkerState) => void;
   setWorkerAutonomousWalk: (fromWorkerId: string, toWorkerIdOrCEO: string) => void;
   setWorkerPeek: (workerId: string | null) => void;
+  updateWorkerStreaming: (workerId: string, text: string) => void;
+  updatePersonality: (workerId: string, p: Partial<AgentPersonality>) => void;
 
   addManagerLog: (log: ManagerLog) => void;
+  addTimelineEvent: (ev: Omit<TimelineEvent, 'id'>) => void;
+  setChatPanelOpen: (open: boolean) => void;
+  setLiveStreamWorker: (id: string | null) => void;
 }
 
 function makeWorker(
@@ -91,6 +108,8 @@ function makeWorker(
     direction: isManager ? MANAGER_DIRECTION : office.seatDirection,
     animTimer: 0,
     isManager,
+    personality: { ...DEFAULT_PERSONALITY },
+    streamingText: '',
   };
 }
 
@@ -98,17 +117,14 @@ const M = 'claude-opus-4-6';
 const P = 'anthropic' as LLMProvider;
 
 const INITIAL: Worker[] = [
-  // 상세페이지 팀
   makeWorker(1, 0, '김하늘', '상페 기획', 'spPlanner', '상세페이지 기획 (구성·레이아웃·스토리보드)', P, M),
   makeWorker(2, 1, '이서연', '상페 카피·후킹', 'spCopy', '상세페이지 카피+후킹 (헤드라인·본문·CTA·후킹문구)', P, M),
   makeWorker(3, 2, '박지민', '상페 이미지', 'spImage', '상세페이지 제품 이미지 생성 (Gemini 3 Pro)', 'google' as LLMProvider, 'gemini-2.0-flash-exp'),
   makeWorker(4, 3, '최유진', '상페 전환최적화', 'spCRO', '상세페이지 CRO (전환율 분석·A/B테스트)', P, M),
-  // DA 팀
   makeWorker(5, 4, '정민수', 'DA 전략기획', 'daStrategy', 'DA 전략기획 (캠페인·타겟팅·매체선정)', P, M),
   makeWorker(6, 5, '강다현', 'DA 카피', 'daCopy', 'DA 광고카피 (소재 헤드라인·본문·CTA)', P, M),
   makeWorker(7, 6, '윤재호', 'DA 퍼포먼스', 'daAnalysis', 'DA 퍼포먼스 분석 (ROAS·CTR·리포트)', P, M),
   makeWorker(8, 7, '김인기', 'DA 소재디자인', 'daCreative', 'DA 소재 디자이너 (배너·이미지·크리에이티브)', P, M),
-  // 관리
   makeWorker(9, 8, '윤성현', '중간관리자', 'manager', '중간관리자 (프로세스·데이터 관리)', P, M),
   { ...makeWorker(10, 0, '송승환', '파운더', 'manager', '파운더 / CEO (전체 총괄)', P, M, true) },
 ];
@@ -119,8 +135,12 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
   managerLogs: [],
   modal: { type: null, workerId: null },
   project: null,
+  projectQueue: [],
   speechBubbles: [],
   peekWorkerId: null,
+  timeline: [],
+  chatPanelOpen: false,
+  liveStreamWorkerId: null,
 
   getWorker: (id) => get().workers.find(w => w.id === id),
 
@@ -139,6 +159,7 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
     set(s => ({ workers: [...s.workers, w], modal: { type: null, workerId: null } }));
   },
 
+  // === Modals ===
   openTaskModal: (workerId) => {
     const w = get().getWorker(workerId);
     if (!w || w.state !== 'idle') return;
@@ -147,13 +168,18 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
       workers: s.workers.map(v => (v.id === workerId ? { ...v, state: 'chatting' as WorkerState } : v)),
     }));
   },
-
   openReportModal: (workerId) => set({ modal: { type: 'report', workerId } }),
   openManagerModal: (workerId?) => set({ modal: { type: 'manager', workerId: workerId ?? null } }),
   openAddWorkerModal: () => set({ modal: { type: 'addWorker', workerId: null } }),
   openStatsModal: (workerId) => set({ modal: { type: 'stats', workerId } }),
   openProjectInput: () => set({ modal: { type: 'projectInput', workerId: null } }),
   openFinalReport: () => set({ modal: { type: 'finalReport', workerId: null } }),
+  openPersonalityModal: (workerId) => set({ modal: { type: 'personality', workerId } }),
+  openTemplatesModal: () => set({ modal: { type: 'templates', workerId: null } }),
+  openABCompare: (extra) => set({ modal: { type: 'abCompare', workerId: null, extra } }),
+  openResultEditor: (workerId) => set({ modal: { type: 'resultEditor', workerId } }),
+  openCompetitorModal: () => set({ modal: { type: 'competitor', workerId: null } }),
+  openTimelineModal: () => set({ modal: { type: 'timeline', workerId: null } }),
 
   closeModal: () => {
     const { modal, workers } = get();
@@ -171,6 +197,7 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
     }
   },
 
+  // === Tasks ===
   startTask: (workerId, instruction, metadata) => {
     const w = get().getWorker(workerId);
     if (!w) return;
@@ -199,7 +226,7 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
       ),
       workers: s.workers.map(w =>
         w.id === workerId && w.currentTask
-          ? { ...w, currentTask: { ...w.currentTask, result, status: 'completed' as const, completedAt: Date.now() } }
+          ? { ...w, currentTask: { ...w.currentTask, result, status: 'completed' as const, completedAt: Date.now() }, streamingText: '' }
           : w,
       ),
     }));
@@ -316,12 +343,18 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
     }
   },
 
-  startProject: (productInfo, phases) => set({
-    project: {
-      id: uid(), productInfo, status: 'in_progress',
-      phases, messages: [], finalReport: null, createdAt: Date.now(),
-    },
-  }),
+  // === Project ===
+  startProject: (productInfo, phases, opts) => {
+    const colorIdx = (get().projectQueue.length) % PROJECT_COLORS.length;
+    set({
+      project: {
+        id: uid(), productInfo, status: 'in_progress',
+        phases, messages: [], finalReport: null, createdAt: Date.now(),
+        color: PROJECT_COLORS[colorIdx],
+        ...opts,
+      },
+    });
+  },
 
   setProjectStatus: (status) => set(s => ({
     project: s.project ? { ...s.project, status } : null,
@@ -338,17 +371,21 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
     project: s.project ? {
       ...s.project,
       phases: s.project.phases.map(p =>
-        p.id === phaseId ? { ...p, status: 'completed' as PhaseStatus, result } : p
+        p.id === phaseId ? { ...p, status: 'completed' as PhaseStatus, result, streamingText: '' } : p
       ),
     } : null,
   })),
 
-  completeProject: (finalReport) => set(s => ({
-    project: s.project ? {
+  completeProject: (finalReport) => set(s => {
+    const completed = s.project ? {
       ...s.project, status: 'completed' as ProjectStatus,
       finalReport, completedAt: Date.now(),
-    } : null,
-  })),
+    } : null;
+    return {
+      project: completed,
+      projectQueue: completed ? [...s.projectQueue, completed] : s.projectQueue,
+    };
+  }),
 
   addProjectMessage: (msg) => set(s => ({
     project: s.project ? {
@@ -356,6 +393,16 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
     } : null,
   })),
 
+  updatePhaseStreaming: (phaseId, text) => set(s => ({
+    project: s.project ? {
+      ...s.project,
+      phases: s.project.phases.map(p =>
+        p.id === phaseId ? { ...p, streamingText: text } : p
+      ),
+    } : null,
+  })),
+
+  // === UI & Visual ===
   setSpeechBubble: (workerId, text, durationMs) => set(s => ({
     speechBubbles: [
       ...s.speechBubbles.filter(b => b.workerId !== workerId),
@@ -363,9 +410,14 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
     ],
   })),
 
-  clearExpiredBubbles: () => set(s => ({
-    speechBubbles: s.speechBubbles.filter(b => b.expiresAt > Date.now()),
-  })),
+  clearExpiredBubbles: () => {
+    const now = Date.now();
+    const current = get().speechBubbles;
+    const filtered = current.filter(b => b.expiresAt > now);
+    if (filtered.length !== current.length) {
+      set({ speechBubbles: filtered });
+    }
+  },
 
   setWorkerState: (workerId, state) => set(s => ({
     workers: s.workers.map(w => w.id === workerId ? { ...w, state } : w),
@@ -406,5 +458,24 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
 
   setWorkerPeek: (workerId) => set({ peekWorkerId: workerId }),
 
+  updateWorkerStreaming: (workerId, text) => set(s => ({
+    workers: s.workers.map(w =>
+      w.id === workerId ? { ...w, streamingText: text } : w
+    ),
+  })),
+
+  updatePersonality: (workerId, p) => set(s => ({
+    workers: s.workers.map(w =>
+      w.id === workerId ? { ...w, personality: { ...w.personality, ...p } } : w
+    ),
+  })),
+
   addManagerLog: (log) => set(s => ({ managerLogs: [...s.managerLogs, log] })),
+
+  addTimelineEvent: (ev) => set(s => ({
+    timeline: [...s.timeline, { ...ev, id: uid() }],
+  })),
+
+  setChatPanelOpen: (open) => set({ chatPanelOpen: open }),
+  setLiveStreamWorker: (id) => set({ liveStreamWorkerId: id }),
 }));

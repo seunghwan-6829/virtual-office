@@ -41,6 +41,21 @@ export interface OfficeSlot {
   seatDirection: Direction;
 }
 
+// === Personality System ===
+
+export interface AgentPersonality {
+  creativity: number;     // 0~100: 보수적 ↔ 창의적
+  detail: number;         // 0~100: 간결 ↔ 상세
+  tone: number;           // 0~100: 포멀 ↔ 캐주얼
+  aggression: number;     // 0~100: 안전 ↔ 공격적 마케팅
+}
+
+export const DEFAULT_PERSONALITY: AgentPersonality = {
+  creativity: 50, detail: 60, tone: 40, aggression: 50,
+};
+
+// === Worker ===
+
 export interface Worker {
   id: string;
   charId: number;
@@ -59,6 +74,9 @@ export interface Worker {
   direction: Direction;
   animTimer: number;
   isManager: boolean;
+  personality: AgentPersonality;
+  streamingText: string;
+  projectColor?: string;
 }
 
 export interface Task {
@@ -109,9 +127,15 @@ export interface TaskRecord {
 }
 
 export interface ModalState {
-  type: 'task' | 'report' | 'manager' | 'addWorker' | 'stats' | 'projectInput' | 'finalReport' | null;
+  type: 'task' | 'report' | 'manager' | 'addWorker' | 'stats'
+      | 'projectInput' | 'finalReport' | 'personality' | 'templates'
+      | 'abCompare' | 'resultEditor' | 'chatPanel' | 'timeline'
+      | 'competitor' | null;
   workerId: string | null;
+  extra?: Record<string, unknown>;
 }
+
+// === Project System ===
 
 export type ProjectStatus = 'idle' | 'planning' | 'in_progress' | 'compiling' | 'completed';
 export type PhaseStatus = 'pending' | 'in_progress' | 'completed' | 'revision';
@@ -126,6 +150,8 @@ export interface WorkPhase {
   dependsOn: string[];
   order: number;
   team: 'sp' | 'da';
+  abVariant?: 'A' | 'B';
+  streamingText?: string;
 }
 
 export interface AgentMessage {
@@ -135,7 +161,7 @@ export interface AgentMessage {
   toId: string;
   toName: string;
   message: string;
-  type: 'handoff' | 'feedback' | 'question' | 'approval' | 'status';
+  type: 'handoff' | 'feedback' | 'question' | 'approval' | 'status' | 'user_intervention' | 'dialogue';
   timestamp: number;
 }
 
@@ -148,6 +174,10 @@ export interface Project {
   finalReport: string | null;
   createdAt: number;
   completedAt?: number;
+  color: string;
+  templateId?: string;
+  competitorData?: string;
+  abEnabled?: boolean;
 }
 
 export interface SpeechBubbleData {
@@ -155,6 +185,61 @@ export interface SpeechBubbleData {
   text: string;
   expiresAt: number;
 }
+
+// === Timeline Replay ===
+
+export interface TimelineEvent {
+  id: string;
+  projectId: string;
+  timestamp: number;
+  type: 'phase_start' | 'phase_complete' | 'message' | 'walk' | 'bubble' | 'intervention';
+  actorId: string;
+  actorName: string;
+  detail: string;
+  targetId?: string;
+}
+
+// === Project Templates ===
+
+export interface ProjectTemplate {
+  id: string;
+  name: string;
+  icon: string;
+  category: string;
+  spPrompt: string;
+  daPrompt: string;
+  description: string;
+}
+
+// === Competitor Analysis ===
+
+export interface CompetitorInput {
+  url?: string;
+  brandName: string;
+  productName: string;
+  strengths: string;
+  weaknesses: string;
+  notes: string;
+}
+
+// === A/B Testing ===
+
+export interface ABResult {
+  variantA: string;
+  variantB: string;
+  roleKey: RoleKey;
+  workerName: string;
+  selectedVariant?: 'A' | 'B';
+}
+
+// === Multi-Project ===
+
+export const PROJECT_COLORS = [
+  '#3b82f6', '#8b5cf6', '#ef4444', '#f59e0b', '#10b981',
+  '#ec4899', '#06b6d4', '#f97316',
+];
+
+// === UI Colors ===
 
 export const CHAR_UI_COLORS: string[] = [
   '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
