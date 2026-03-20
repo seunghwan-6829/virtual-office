@@ -57,6 +57,7 @@ export interface OfficeStore {
   workerFinishReport: (workerId: string) => void;
   requestRevision: (workerId: string, feedback: string) => void;
   workerReturnToDesk: (workerId: string) => void;
+  workerWalkBackToDesk: (workerId: string) => void;
 
   startProject: (productInfo: string, phases: WorkPhase[], opts?: Partial<Project>) => void;
   setProjectStatus: (status: ProjectStatus) => void;
@@ -348,6 +349,25 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
         ),
       }));
     }
+  },
+
+  workerWalkBackToDesk: (workerId) => {
+    const w = get().getWorker(workerId);
+    const office = getOffice(w?.officeId ?? '');
+    if (!office || !w) return;
+    const path = [
+      { x: w.position.x, y: CORRIDOR_Y },
+      { x: office.door.x, y: CORRIDOR_Y },
+      office.door,
+      office.seat,
+    ];
+    set(s => ({
+      workers: s.workers.map(v =>
+        v.id === workerId
+          ? { ...v, state: 'walkingBack' as WorkerState, path, pathIndex: 0, animTimer: 0 }
+          : v,
+      ),
+    }));
   },
 
   // === Project ===

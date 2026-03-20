@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { GameEngine } from '@/lib/game/engine';
 import { useOfficeStore } from '@/lib/store';
-import { BG_WIDTH, BG_HEIGHT, Worker } from '@/lib/types';
+import { BG_WIDTH, BG_HEIGHT, Worker, WorkerState } from '@/lib/types';
 
 export default function OfficeCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -39,7 +39,7 @@ export default function OfficeCanvas() {
       onWorkerReturnToDesk: (id: string) => useOfficeStore.getState().workerReturnToDesk(id),
       onWorkerArriveAtColleague: (id: string) => {
         const s = useOfficeStore.getState();
-        s.workerReturnToDesk(id);
+        s.updateWorker(id, { state: 'discussing' as WorkerState });
       },
       getSpeechBubbles: () => {
         const s = useOfficeStore.getState();

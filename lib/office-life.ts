@@ -13,6 +13,45 @@ function randRange(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+const CHAT_STORAGE_KEY = 'virtual-office-chat';
+const CEO_NOTES_KEY = 'virtual-office-ceo-notes';
+
+export function loadPersistedChat() {
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (raw) {
+      const msgs: AgentMessage[] = JSON.parse(raw);
+      const s = useOfficeStore.getState();
+      const existingIds = new Set(s.officeMessages.map(m => m.id));
+      for (const m of msgs) {
+        if (!existingIds.has(m.id)) s.addOfficeMessage(m);
+      }
+    }
+    const notesRaw = localStorage.getItem(CEO_NOTES_KEY);
+    if (notesRaw) {
+      const notes = JSON.parse(notesRaw);
+      const s = useOfficeStore.getState();
+      const existingNoteIds = new Set(s.ceoNotes.map(n => n.id));
+      for (const n of notes) {
+        if (!existingNoteIds.has(n.id)) s.addCEONote(n);
+      }
+    }
+  } catch { /* noop */ }
+}
+
+function persistChat() {
+  try {
+    const msgs = useOfficeStore.getState().officeMessages.slice(-300);
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(msgs));
+    const notes = useOfficeStore.getState().ceoNotes;
+    localStorage.setItem(CEO_NOTES_KEY, JSON.stringify(notes));
+  } catch { /* noop */ }
+}
+
+function bubbleText(text: string): string {
+  return text.length > 10 ? text.slice(0, 10) + '...' : text;
+}
+
 function postOfficeMsg(msg: Omit<AgentMessage, 'id' | 'timestamp'>) {
   const s = useOfficeStore.getState();
   const full: AgentMessage = { ...msg, id: uid(), timestamp: Date.now() };
@@ -20,37 +59,11 @@ function postOfficeMsg(msg: Omit<AgentMessage, 'id' | 'timestamp'>) {
   if (s.project && s.project.status !== 'completed') {
     s.addProjectMessage(full);
   }
-  s.setSpeechBubble(msg.fromId, msg.message, 5000);
+  s.setSpeechBubble(msg.fromId, bubbleText(msg.message), 5000);
+  persistChat();
 }
 
-// ================================================================
-// MANAGER PATROL — 3~5분마다 랜덤 1명 방문, 팁/체크, 온라인 정보 습득 후 교차검증
-// ================================================================
-
-const MANAGER_CHECK_MESSAGES = [
-  (name: string) => `${name}님, 진행 상황 어때요? 막히는 거 있으면 말해주세요.`,
-  (name: string) => `${name}님, 지금 하고 있는 작업 방향 괜찮은 것 같아요. 계속 진행해주세요!`,
-  (name: string) => `${name}님, 혹시 다른 팀원한테 필요한 자료 있어요?`,
-  (name: string) => `${name}님, 퀄리티 체크 해봤는데 잘 가고 있네요. 파이팅!`,
-  (name: string) => `${name}님, 잠깐 이거 한번 봐봐요. 참고하면 좋을 것 같아서요.`,
-];
-
-const MANAGER_TIP_TOPICS: { role: string; tips: string[] }[] = [
-  { role: 'sp', tips: [
-    '최근 상세페이지 트렌드를 분석해봤는데, 숏폼 형태의 GIF 삽입이 전환율을 15% 높이고 있어요.',
-    '요즘 상페에서 후기 섹션을 상단으로 올리는 게 유행이에요. 소비자 신뢰도 먼저 확보하는 전략이죠.',
-    '모바일 퍼스트로 갈 때 CTA 버튼은 thumb zone에 배치하는 게 핵심이에요.',
-    '경쟁사들이 비포/애프터 이미지를 적극 활용하고 있어요. 우리도 고려해봐요.',
-  ]},
-  { role: 'da', tips: [
-    'Meta 알고리즘이 최근 변경돼서, 리타겟팅 윈도우를 7일로 줄이는 게 효율적이래요.',
-    '구글 퍼포먼스맥스 캠페인에서 에셋 다양성이 핵심이에요. 최소 15개 이상 권장.',
-    'CTR 개선을 위해 광고 카피에 숫자와 괄호를 넣으면 평균 30% 향상된다는 데이터가 있어요.',
-    'CPC가 높아지고 있는 추세라, 네이버 검색광고 비중을 좀 더 높여보는 것도 방법이에요.',
-  ]},
-];
-
-async function callManagerLLM(instruction: string): Promise<string> {
+async function callLLM(instruction: string, role = '중간관리자', roleKey = 'manager'): Promise<string> {
   try {
     const s = useOfficeStore.getState();
     const mgr = s.workers.find(w => w.roleKey === 'manager' && !w.isManager);
@@ -58,9 +71,7 @@ async function callManagerLLM(instruction: string): Promise<string> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        instruction,
-        role: '중간관리자',
-        roleKey: 'manager',
+        instruction, role, roleKey,
         model: mgr?.model ?? 'claude-opus-4-6',
         provider: mgr?.provider ?? 'anthropic',
       }),
@@ -81,61 +92,103 @@ async function callManagerLLM(instruction: string): Promise<string> {
   }
 }
 
+function walkBack(workerId: string) {
+  const s = useOfficeStore.getState();
+  s.workerWalkBackToDesk(workerId);
+}
+
+// ================================================================
+// MANAGER PATROL — 3~5분마다: 리서치 3분 → 대상에게 전달 → 대상 응답 → 걸어서 복귀
+// ================================================================
+
 async function managerPatrol() {
   const s = useOfficeStore.getState();
   const manager = s.workers.find(w => w.roleKey === 'manager' && !w.isManager);
   if (!manager || manager.state !== 'idle') return;
 
-  const regularWorkers = s.workers.filter(w => !w.isManager && w.roleKey !== 'manager');
+  const regularWorkers = s.workers.filter(w => !w.isManager && w.roleKey !== 'manager' && w.state === 'idle');
   if (regularWorkers.length === 0) return;
 
   const target = pick(regularWorkers);
+  const team = ['spPlanner', 'spCopy', 'spImage', 'spCRO'].includes(target.roleKey) ? 'sp' : 'da';
+  const teamLabel = team === 'sp' ? '상세페이지' : 'DA';
+
+  postOfficeMsg({
+    fromId: manager.id, fromName: manager.name,
+    toId: '', toName: '전체',
+    message: `${target.name}님을 위한 ${teamLabel} 관련 자료를 리서치 중입니다...`,
+    type: 'status',
+  });
+
+  const recentChat = s.officeMessages.slice(-10).map(m => `${m.fromName}: ${m.message}`).join('\n');
+
+  const researchResult = await callLLM(
+    `당신은 중간관리자(윤성현)입니다. ${target.name}(${target.title})에게 지금 당장 도움이 될 실질적인 업계 정보를 리서치해주세요.
+
+[대상] ${target.name} (${target.title} / ${target.role})
+[팀] ${teamLabel} 팀
+[최근 사내 대화]
+${recentChat || '(없음)'}
+
+다음 형식으로 응답하세요 (JSON):
+{
+  "research": "리서치한 핵심 정보 (3~4문장, 구체적 수치/데이터 포함)",
+  "verification": "교차 검증 결과 (1문장)",
+  "tip": "${target.name}님에게 전달할 핵심 팁 (2문장 이내, 반말 금지, 존댓말)"
+}
+반드시 위 JSON만 반환하세요.`
+  );
+
+  let tipMessage = `${target.name}님, 관련 자료를 찾아봤는데 좀 더 정리해서 다시 알려드릴게요.`;
+
+  if (researchResult) {
+    try {
+      const jsonMatch = researchResult.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.tip) tipMessage = parsed.tip;
+      }
+    } catch { /* noop */ }
+  }
 
   s.setWorkerAutonomousWalk(manager.id, target.id);
+  await delay(4000);
 
   postOfficeMsg({
     fromId: manager.id, fromName: manager.name,
     toId: target.id, toName: target.name,
-    message: pick(MANAGER_CHECK_MESSAGES)(target.name),
-    type: 'manager_check',
+    message: tipMessage,
+    type: 'manager_tip',
   });
 
   await delay(3000);
 
-  const team = ['spPlanner', 'spCopy', 'spImage', 'spCRO'].includes(target.roleKey) ? 'sp' : 'da';
-  const tips = MANAGER_TIP_TOPICS.find(t => t.role === team)?.tips ?? [];
+  const targetResponse = await callLLM(
+    `당신은 ${target.name}(${target.title})입니다. 중간관리자 윤성현님이 다음 팁을 알려줬습니다:
 
-  if (tips.length > 0 && Math.random() > 0.3) {
-    const tipText = pick(tips);
+"${tipMessage}"
 
-    const verified = await callManagerLLM(
-      `다음 정보를 교차 검증하세요. 사실인지 확인하고, 정확하다면 "✅ 검증 완료" 태그와 함께 ${target.name}(${target.title})에게 전달할 간결한 한국어 팁(2문장 이내)으로 다시 작성하세요. 부정확하면 "⚠️ 주의" 태그를 붙이세요.\n\n원본 정보: ${tipText}`
-    );
+이에 대해 감사하면서 구체적으로 어떻게 적용할지 1~2문장으로 짧게 답변하세요. 존댓말로 답변하세요.`,
+    target.role, target.roleKey,
+  );
 
-    if (verified) {
-      const shortTip = verified.length > 150 ? verified.slice(0, 150) + '...' : verified;
-      postOfficeMsg({
-        fromId: manager.id, fromName: manager.name,
-        toId: target.id, toName: target.name,
-        message: shortTip,
-        type: 'manager_tip',
-      });
-    } else {
-      postOfficeMsg({
-        fromId: manager.id, fromName: manager.name,
-        toId: target.id, toName: target.name,
-        message: `${target.name}님, 관련 자료 찾아보고 있는데 좀 더 확인해볼게요!`,
-        type: 'manager_tip',
-      });
-    }
-  }
+  const shortResponse = targetResponse
+    ? (targetResponse.length > 100 ? targetResponse.slice(0, 100) + '...' : targetResponse)
+    : '감사합니다! 바로 적용해볼게요.';
 
-  await delay(4000);
-  s.workerReturnToDesk(manager.id);
+  postOfficeMsg({
+    fromId: target.id, fromName: target.name,
+    toId: manager.id, toName: manager.name,
+    message: shortResponse,
+    type: 'collab',
+  });
+
+  await delay(2000);
+  walkBack(manager.id);
 }
 
 // ================================================================
-// CEO PATROL — 10분마다 나와서 개선사항 스스로 찾고 기록
+// CEO PATROL — 10분마다 나와서 개선사항 찾고 기록 + 대상자 응답
 // ================================================================
 
 async function ceoPatrol() {
@@ -148,10 +201,9 @@ async function ceoPatrol() {
     .filter(w => !w.isManager && w.roleKey !== 'manager')
     .map(w => `${w.name}(${w.title}): ${w.state}`)
     .join(', ');
-
   const chatLog = recentMessages.map(m => `[${m.fromName}→${m.toName}] ${m.message}`).join('\n');
 
-  const instruction = `당신은 CEO(송승환)입니다. 현재 사무실 상태를 관찰하고 개선할 점을 찾으세요.
+  const instruction = `당신은 CEO(송승환)입니다. 현재 사무실을 관찰하고 개선할 점을 찾으세요.
 
 [현재 직원 상태]
 ${workerStates}
@@ -161,14 +213,16 @@ ${chatLog || '(대화 없음)'}
 
 [완료된 프로젝트 수] ${s.projectQueue.length}건
 
-다음 형식으로 1가지 개선사항을 작성하세요 (JSON):
+다음 형식으로 응답하세요 (JSON):
 {
   "category": "process|quality|efficiency|team|general",
-  "content": "개선사항 내용 (2~3문장)",
-  "observation": "CEO 한마디 (단톡방에 올릴 짧은 코멘트)"
-}`;
+  "content": "개선사항 상세 내용 (2~3문장)",
+  "targetName": "개선 대상 직원 이름 (없으면 빈 문자열)",
+  "observation": "단톡방에 올릴 짧은 한마디 (1~2문장)"
+}
+반드시 위 JSON만 반환하세요.`;
 
-  const result = await callManagerLLM(instruction);
+  const result = await callLLM(instruction);
 
   if (result) {
     try {
@@ -183,67 +237,60 @@ ${chatLog || '(대화 없음)'}
             acknowledged: false,
           });
 
-          const observation = parsed.observation || '다들 잘 하고 있네. 한 가지만 더 신경 써보자.';
+          const observation = parsed.observation || '전체적으로 좋습니다. 한 가지만 더 개선해봅시다.';
           postOfficeMsg({
             fromId: ceo.id, fromName: ceo.name,
             toId: '', toName: '전체',
             message: observation,
             type: 'ceo_note',
           });
+
+          if (parsed.targetName) {
+            const targetWorker = s.workers.find(w => w.name === parsed.targetName);
+            if (targetWorker) {
+              await delay(3000);
+              const workerReply = await callLLM(
+                `당신은 ${targetWorker.name}(${targetWorker.title})입니다. CEO 송승환님이 다음과 같이 말했습니다: "${observation}". 1문장으로 짧게 답변하세요.`,
+                targetWorker.role, targetWorker.roleKey,
+              );
+              const shortReply = workerReply
+                ? (workerReply.length > 80 ? workerReply.slice(0, 80) + '...' : workerReply)
+                : '네, 알겠습니다! 바로 개선하겠습니다.';
+              postOfficeMsg({
+                fromId: targetWorker.id, fromName: targetWorker.name,
+                toId: ceo.id, toName: ceo.name,
+                message: shortReply,
+                type: 'collab',
+              });
+            }
+          }
         }
       }
     } catch {
       postOfficeMsg({
         fromId: ceo.id, fromName: ceo.name,
         toId: '', toName: '전체',
-        message: '잠깐 둘러봤는데 전체적으로 잘 가고 있네. 계속 화이팅!',
+        message: '잘 가고 있습니다. 계속 집중해주세요.',
         type: 'ceo_note',
       });
     }
   }
+  persistChat();
 }
 
 // ================================================================
-// AGENT COLLABORATION — 에이전트끼리 자율적으로 자료 공유/의논
+// AGENT COLLABORATION — 실제 LLM 대화로 자료 교환 + 걸어서 복귀
 // ================================================================
 
-const COLLAB_PAIRS: [string, string, string[]][] = [
-  ['spPlanner', 'spCopy', [
-    '서연님, 기획안에서 이 부분 카피 방향 잡을 때 참고해주세요.',
-    '하늘님, 이 섹션 카피 길이는 어느 정도가 좋을까요?',
-  ]],
-  ['spPlanner', 'spImage', [
-    '지민님, 히어로 이미지 구도 이렇게 잡으면 어떨까요?',
-    '하늘님, 제품 촬영 각도는 어떤 게 좋을까요?',
-  ]],
-  ['spCopy', 'spCRO', [
-    '유진님, CTA 문구 이거랑 저거 중에 어떤 게 전환율 높을까요?',
-    '서연님, 이 카피 A/B 테스트 추천드려요.',
-  ]],
-  ['daStrategy', 'daCopy', [
-    '다현님, 이 채널 타겟팅에 맞는 톤 잡아주세요.',
-    '민수님, 카피 스타일은 좀 더 직접적으로 갈까요?',
-  ]],
-  ['daStrategy', 'daCreative', [
-    '인기님, 이 캠페인 메인 비주얼 방향 공유해요.',
-    '민수님, 배너 사이즈별 레이아웃 정리해둘게요.',
-  ]],
-  ['daCopy', 'daAnalysis', [
-    '재호님, 이전 카피 CTR 데이터 있으면 공유해주세요.',
-    '다현님, 이 카피 셋이 성과 좋았어요. 비슷한 톤으로 가보세요.',
-  ]],
-  ['spImage', 'spCRO', [
-    '유진님, 이미지 배치가 전환에 영향 주는 부분 체크해주세요.',
-    '지민님, 이 위치에 제품 이미지 넣으면 체류시간 늘어날 거예요.',
-  ]],
-];
-
-const CASUAL_MESSAGES = [
-  (name: string) => `${name}님, 커피 한잔 하실래요? ☕`,
-  (name: string) => `${name}님, 오늘 점심 뭐 먹을까요?`,
-  (name: string) => `${name}님, 이거 재밌는 아티클인데 한번 읽어보세요!`,
-  (name: string) => `다들 오늘도 수고하고 있네요 💪`,
-  (name: string) => `${name}님, 어제 보내준 자료 잘 봤어요. 감사합니다!`,
+const COLLAB_TOPICS: [string, string, string][] = [
+  ['spPlanner', 'spCopy', '상세페이지 기획 방향과 카피 톤앤매너'],
+  ['spPlanner', 'spImage', '페이지 레이아웃과 이미지 구도 방향'],
+  ['spCopy', 'spCRO', 'CTA 문구 최적화와 전환율'],
+  ['spImage', 'spCRO', '이미지 배치와 사용자 체류 시간'],
+  ['daStrategy', 'daCopy', '캠페인 전략에 맞는 광고 카피 톤'],
+  ['daStrategy', 'daCreative', '캠페인 비주얼 방향과 매체별 소재'],
+  ['daCopy', 'daAnalysis', '광고 카피 성과 데이터와 개선 방향'],
+  ['daCreative', 'daAnalysis', '소재 디자인과 퍼포먼스 지표 연계'],
 ];
 
 async function agentCollaboration() {
@@ -253,54 +300,68 @@ async function agentCollaboration() {
   );
   if (available.length < 2) return;
 
-  if (Math.random() < 0.4) {
+  if (Math.random() < 0.1) {
     const w = pick(available);
+    const other = pick(available.filter(v => v.id !== w.id));
     postOfficeMsg({
       fromId: w.id, fromName: w.name,
       toId: '', toName: '전체',
-      message: pick(CASUAL_MESSAGES)(pick(available.filter(v => v.id !== w.id)).name),
+      message: `${other.name}님, 오늘도 수고하고 있네요!`,
       type: 'casual',
     });
     return;
   }
 
-  const validPairs = COLLAB_PAIRS.filter(([a, b]) =>
+  const validTopics = COLLAB_TOPICS.filter(([a, b]) =>
     available.some(w => w.roleKey === a) && available.some(w => w.roleKey === b)
   );
-  if (validPairs.length === 0) return;
+  if (validTopics.length === 0) return;
 
-  const [roleA, roleB, messages] = pick(validPairs);
+  const [roleA, roleB, topic] = pick(validTopics);
   const workerA = available.find(w => w.roleKey === roleA);
   const workerB = available.find(w => w.roleKey === roleB);
   if (!workerA || !workerB) return;
 
   s.setWorkerAutonomousWalk(workerA.id, workerB.id);
 
+  const questionResult = await callLLM(
+    `당신은 ${workerA.name}(${workerA.title})입니다. 동료 ${workerB.name}(${workerB.title})에게 "${topic}" 관련으로 실질적인 질문이나 자료 요청을 하세요. 구체적인 업무 내용으로 2문장 이내로 작성하세요. 존댓말 사용.`,
+    workerA.role, workerA.roleKey,
+  );
+
+  const question = questionResult
+    ? (questionResult.length > 120 ? questionResult.slice(0, 120) + '...' : questionResult)
+    : `${workerB.name}님, ${topic} 관련해서 의견 좀 나눌 수 있을까요?`;
+
+  await delay(3000);
+
   postOfficeMsg({
     fromId: workerA.id, fromName: workerA.name,
     toId: workerB.id, toName: workerB.name,
-    message: pick(messages),
+    message: question,
     type: 'collab',
   });
 
-  await delay(5000);
+  await delay(4000);
 
-  const replies = [
-    `네, 알겠습니다! 바로 반영할게요.`,
-    `좋은 의견이에요. 제가 수정해서 다시 보여드릴게요.`,
-    `감사합니다! 이거 참고해서 진행할게요.`,
-    `오 이거 좋네요. 잠깐 같이 얘기해봐요.`,
-  ];
+  const answerResult = await callLLM(
+    `당신은 ${workerB.name}(${workerB.title})입니다. 동료 ${workerA.name}(${workerA.title})이 다음과 같이 물었습니다: "${question}". 구체적이고 실질적인 답변을 2~3문장으로 해주세요. 가능하면 수치나 구체적 방법을 포함하세요. 존댓말 사용.`,
+    workerB.role, workerB.roleKey,
+  );
+
+  const answer = answerResult
+    ? (answerResult.length > 150 ? answerResult.slice(0, 150) + '...' : answerResult)
+    : `좋은 질문이에요! 제가 확인해보고 자료 정리해서 공유드릴게요.`;
 
   postOfficeMsg({
     fromId: workerB.id, fromName: workerB.name,
     toId: workerA.id, toName: workerA.name,
-    message: pick(replies),
+    message: answer,
     type: 'collab',
   });
 
   await delay(3000);
-  s.workerReturnToDesk(workerA.id);
+  walkBack(workerA.id);
 }
 
 // ================================================================
@@ -314,51 +375,37 @@ let running = false;
 
 function scheduleManager() {
   if (!running) return;
-  const interval = randRange(180000, 300000); // 3~5분
   managerTimer = setTimeout(async () => {
     try { await managerPatrol(); } catch { /* noop */ }
-    scheduleManager();
-  }, interval);
+    if (running) scheduleManager();
+  }, randRange(180000, 300000));
 }
 
 function scheduleCEO() {
   if (!running) return;
-  const interval = randRange(600000, 660000); // 10~11분
   ceoTimer = setTimeout(async () => {
     try { await ceoPatrol(); } catch { /* noop */ }
-    scheduleCEO();
-  }, interval);
+    if (running) scheduleCEO();
+  }, randRange(600000, 660000));
 }
 
 function scheduleCollab() {
   if (!running) return;
-  const interval = randRange(60000, 120000); // 1~2분
   collabTimer = setTimeout(async () => {
     try { await agentCollaboration(); } catch { /* noop */ }
-    scheduleCollab();
-  }, interval);
+    if (running) scheduleCollab();
+  }, randRange(90000, 150000));
 }
 
 export function startOfficeLife() {
   if (running) return;
   running = true;
 
-  setTimeout(() => scheduleManager(), randRange(15000, 30000));
-  setTimeout(() => scheduleCEO(), randRange(30000, 60000));
-  setTimeout(() => scheduleCollab(), randRange(10000, 20000));
+  loadPersistedChat();
 
-  setTimeout(() => {
-    const s = useOfficeStore.getState();
-    const mgr = s.workers.find(w => w.roleKey === 'manager' && !w.isManager);
-    if (mgr) {
-      postOfficeMsg({
-        fromId: mgr.id, fromName: mgr.name,
-        toId: '', toName: '전체',
-        message: '좋은 아침이에요! 오늘도 화이팅합시다. 필요한 거 있으면 언제든 말해주세요 😊',
-        type: 'casual',
-      });
-    }
-  }, 3000);
+  setTimeout(() => scheduleManager(), randRange(20000, 40000));
+  setTimeout(() => scheduleCEO(), randRange(40000, 70000));
+  setTimeout(() => scheduleCollab(), randRange(15000, 30000));
 }
 
 export function stopOfficeLife() {

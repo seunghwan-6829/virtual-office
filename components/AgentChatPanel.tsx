@@ -144,7 +144,7 @@ export default function AgentChatPanel() {
                 <div key={m.id}>
                   {showTime && (
                     <div className="text-center text-gray-700 text-[10px] py-1">
-                      {new Date(m.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(m.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' })}
                     </div>
                   )}
                   <div className={`flex gap-2 ${isUser ? 'flex-row-reverse' : ''}`}>
@@ -159,13 +159,13 @@ export default function AgentChatPanel() {
                             : <div className="w-full h-full bg-gray-700" />
                       }
                     </div>
-                    <div className={`max-w-[78%] ${isUser ? 'text-right' : ''}`}>
+                    <div className={`max-w-[85%] ${isUser ? 'text-right' : ''}`}>
                       <div className="flex items-center gap-1 mb-0.5">
                         <span className="text-white text-[11px] font-medium">{m.fromName}</span>
                         {m.toName && m.toName !== '전체' && <span className="text-gray-600 text-[10px]">→ {m.toName}</span>}
                         <span className="text-[10px]">{style.icon}</span>
                       </div>
-                      <div className={`rounded-2xl px-3 py-2 text-xs leading-relaxed ${isUser ? 'bg-amber-500/20 text-amber-200 rounded-tr-sm' : `${style.bg} ${style.text} rounded-tl-sm`}`}>
+                      <div className={`rounded-2xl px-3 py-2 text-xs leading-relaxed break-words whitespace-pre-wrap ${isUser ? 'bg-amber-500/20 text-amber-200 rounded-tr-sm' : `${style.bg} ${style.text} rounded-tl-sm`}`}>
                         {m.message}
                       </div>
                     </div>
@@ -219,7 +219,7 @@ export default function AgentChatPanel() {
                   <span className="text-gray-600 text-[10px] px-1.5 py-0.5 bg-gray-800 rounded">{CATEGORY_LABELS[note.category] ?? note.category}</span>
                 </div>
                 <span className="text-gray-600 text-[10px]">
-                  {new Date(note.timestamp).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  {new Date(note.timestamp).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' })}
                 </span>
               </div>
               <p className="text-gray-300 text-xs leading-relaxed">{note.content}</p>
