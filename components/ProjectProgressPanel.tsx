@@ -1,7 +1,9 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useOfficeStore } from '@/lib/store';
 import { getCharColor } from '@/lib/types';
+import { loadProjectHistory } from '@/lib/storage';
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   pending: { label: '대기', color: 'text-gray-500' },
@@ -14,6 +16,11 @@ export default function ProjectProgressPanel() {
   const project = useOfficeStore(s => s.project);
   const workers = useOfficeStore(s => s.workers);
   const openFinalReport = useOfficeStore(s => s.openFinalReport);
+  const [historyCount, setHistoryCount] = useState(0);
+
+  useEffect(() => {
+    try { setHistoryCount(loadProjectHistory().length); } catch { /* noop */ }
+  }, [project?.status]);
 
   if (!project || project.status === 'idle') return null;
 
@@ -34,7 +41,12 @@ export default function ProjectProgressPanel() {
              project.status === 'compiling' ? '📝 최종 보고서 작성 중...' :
              '⚡ 프로젝트 진행 중'}
           </span>
-          <span className="text-gray-500 text-xs">{totalDone}/{totalPhases}</span>
+          <div className="flex items-center gap-2">
+            {historyCount > 0 && (
+              <span className="text-xs text-amber-400/70" title={`${historyCount}건의 과거 프로젝트 학습 데이터`}>🧠 {historyCount}</span>
+            )}
+            <span className="text-gray-500 text-xs">{totalDone}/{totalPhases}</span>
+          </div>
         </div>
         <div className="w-full bg-gray-800 rounded-full h-2">
           <div

@@ -1,5 +1,6 @@
 import { useOfficeStore } from './store';
 import { RoleKey, WorkPhase, AgentMessage, PhaseStatus } from './types';
+import { saveProjectSnapshot, getAgentHistory } from './storage';
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -118,7 +119,8 @@ async function runPhase(phase: WorkPhase, allPhases: WorkPhase[]) {
   bubble(worker.id, `${worker.title} 작업 시작!`, 6000);
 
   const context = getLeadResult(allPhases, phase);
-  const result = await callLLM(phase.task + context, worker);
+  const history = getAgentHistory(phase.roleKey);
+  const result = await callLLM(phase.task + context + history, worker);
 
   useOfficeStore.getState().completePhase(phase.id, result);
   useOfficeStore.getState().setWorkerState(worker.id, 'idle');
@@ -137,7 +139,8 @@ async function compileReport(productInfo: string, phases: WorkPhase[]): Promise<
     return `## ${w?.name} (${w?.title})\n${p.result}`;
   }).join('\n\n---\n\n');
 
-  const instruction = `당신은 중간관리자입니다. 팀원들의 작업 결과를 종합하여 CEO 보고용 최종 보고서를 작성하세요.\n\n[상품 정보]\n${productInfo}\n\n[팀원 작업 결과]\n${body}\n\n보고서 구성:\n1. 핵심 요약 (Executive Summary)\n2. 상세페이지 팀 종합\n3. DA 팀 종합\n4. 크로스 팀 시너지 전략\n5. 최종 제언 및 액션 아이템`;
+  const managerHistory = getAgentHistory('manager');
+  const instruction = `당신은 중간관리자입니다. 팀원들의 작업 결과를 종합하여 CEO 보고용 최종 보고서를 작성하세요.\n\n[상품 정보]\n${productInfo}\n\n[팀원 작업 결과]\n${body}\n\n보고서 구성:\n1. 핵심 요약 (Executive Summary)\n2. 상세페이지 팀 종합\n3. DA 팀 종합\n4. 크로스 팀 시너지 전략\n5. 최종 제언 및 액션 아이템${managerHistory}`;
 
   return callLLM(instruction, {
     role: mgr?.role ?? '중간관리자',
@@ -210,6 +213,16 @@ export async function runAutonomousProject(input: ProjectInput) {
   const report = await compileReport(combinedInfo, finalPhases);
 
   useOfficeStore.getState().completeProject(report);
+
+  // 히스토리 저장
+  try {
+    const finalProject = useOfficeStore.getState().project;
+    if (finalProject) {
+      const nameMap: Record<string, string> = {};
+      s.workers.forEach(w => { nameMap[w.id] = w.name; });
+      saveProjectSnapshot(finalProject, nameMap);
+    }
+  } catch { /* noop */ }
 
   if (manager) {
     useOfficeStore.getState().setWorkerState(manager.id, 'idle');
