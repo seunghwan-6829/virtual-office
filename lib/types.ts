@@ -161,8 +161,18 @@ export interface AgentMessage {
   toId: string;
   toName: string;
   message: string;
-  type: 'handoff' | 'feedback' | 'question' | 'approval' | 'status' | 'user_intervention' | 'dialogue';
+  type: 'handoff' | 'feedback' | 'question' | 'approval' | 'status'
+      | 'user_intervention' | 'dialogue' | 'manager_check' | 'manager_tip'
+      | 'ceo_note' | 'collab' | 'casual';
   timestamp: number;
+}
+
+export interface CEONote {
+  id: string;
+  content: string;
+  category: 'process' | 'quality' | 'efficiency' | 'team' | 'general';
+  timestamp: number;
+  acknowledged: boolean;
 }
 
 export interface Project {

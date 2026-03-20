@@ -22,6 +22,7 @@ import TimelineReplay from '@/components/TimelineReplay';
 import { useOfficeStore } from '@/lib/store';
 import { ProjectTemplate, CompetitorInput } from '@/lib/types';
 import { loadProjectHistory } from '@/lib/storage';
+import { startOfficeLife, stopOfficeLife } from '@/lib/office-life';
 
 export default function Home() {
   const workers = useOfficeStore(s => s.workers);
@@ -40,6 +41,11 @@ export default function Home() {
   useEffect(() => {
     try { setHistoryCount(loadProjectHistory().length); } catch { /* noop */ }
   }, [project?.status]);
+
+  useEffect(() => {
+    startOfficeLife();
+    return () => stopOfficeLife();
+  }, []);
 
   const executeWorkerTask = useCallback(async (workerId: string) => {
     const worker = useOfficeStore.getState().workers.find(w => w.id === workerId);
@@ -140,12 +146,10 @@ export default function Home() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {isProjectRunning && (
-            <button onClick={() => setChatOpen(true)}
-              className="text-xs bg-cyan-500/20 text-cyan-400 px-2.5 py-1 rounded-full font-medium hover:bg-cyan-500/30 transition-colors">
-              💬 채팅
-            </button>
-          )}
+          <button onClick={() => setChatOpen(true)}
+            className="text-xs bg-cyan-500/20 text-cyan-400 px-2.5 py-1 rounded-full font-medium hover:bg-cyan-500/30 transition-colors">
+            💬 단톡방
+          </button>
           {isProjectRunning && (
             <span className="text-xs bg-blue-500/20 text-blue-400 px-2.5 py-1 rounded-full animate-pulse font-medium">
               ⚡ 에이전트 자율 협업 중

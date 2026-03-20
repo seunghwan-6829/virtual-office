@@ -4,7 +4,7 @@ import {
   WorkerState, LLMProvider, RoleKey, TaskRecord,
   Project, WorkPhase, AgentMessage, ProjectStatus, PhaseStatus,
   SpeechBubbleData, AgentPersonality, DEFAULT_PERSONALITY,
-  TimelineEvent, PROJECT_COLORS,
+  TimelineEvent, PROJECT_COLORS, CEONote,
 } from './types';
 import { OFFICES, MANAGER_POSITION, MANAGER_DIRECTION, getCEOWaitPosition, getOffice, CORRIDOR_Y } from './game/office-map';
 import { buildPathToWait, buildPathToSeat } from './game/pathfinding';
@@ -26,6 +26,8 @@ export interface OfficeStore {
   timeline: TimelineEvent[];
   chatPanelOpen: boolean;
   liveStreamWorkerId: string | null;
+  officeMessages: AgentMessage[];
+  ceoNotes: CEONote[];
 
   getWorker: (id: string) => Worker | undefined;
   updateWorker: (id: string, u: Partial<Worker>) => void;
@@ -76,6 +78,9 @@ export interface OfficeStore {
   addTimelineEvent: (ev: Omit<TimelineEvent, 'id'>) => void;
   setChatPanelOpen: (open: boolean) => void;
   setLiveStreamWorker: (id: string | null) => void;
+  addOfficeMessage: (msg: AgentMessage) => void;
+  addCEONote: (note: Omit<CEONote, 'id'>) => void;
+  acknowledgeCEONote: (id: string) => void;
 }
 
 function makeWorker(
@@ -141,6 +146,8 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
   timeline: [],
   chatPanelOpen: false,
   liveStreamWorkerId: null,
+  officeMessages: [],
+  ceoNotes: [],
 
   getWorker: (id) => get().workers.find(w => w.id === id),
 
@@ -478,4 +485,16 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
 
   setChatPanelOpen: (open) => set({ chatPanelOpen: open }),
   setLiveStreamWorker: (id) => set({ liveStreamWorkerId: id }),
+
+  addOfficeMessage: (msg) => set(s => ({
+    officeMessages: [...s.officeMessages.slice(-200), msg],
+  })),
+
+  addCEONote: (note) => set(s => ({
+    ceoNotes: [...s.ceoNotes, { ...note, id: uid() }],
+  })),
+
+  acknowledgeCEONote: (id) => set(s => ({
+    ceoNotes: s.ceoNotes.map(n => n.id === id ? { ...n, acknowledged: true } : n),
+  })),
 }));
