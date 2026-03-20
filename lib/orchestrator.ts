@@ -19,35 +19,47 @@ const DA_WORKFLOW: { roleKey: RoleKey; order: number; taskTemplate: string; wave
   { roleKey: 'daAnalysis', order: 3, wave: 2, taskTemplate: '전략을 기반으로 성과 예측 프레임워크 및 KPI 대시보드를 설계해주세요.' },
 ];
 
-export function createProjectPhases(productInfo: string): WorkPhase[] {
-  const store = useOfficeStore.getState();
-  const workers = store.workers;
+export type TeamSelection = 'both' | 'sp' | 'da';
+
+export interface ProjectInput {
+  teams: TeamSelection;
+  spPrompt: string;
+  daPrompt: string;
+}
+
+export function createProjectPhases(input: ProjectInput): WorkPhase[] {
+  const workers = useOfficeStore.getState().workers;
   const phases: WorkPhase[] = [];
-
-  const allWorkflows = [...SP_WORKFLOW.map(w => ({ ...w, team: 'sp' as const })), ...DA_WORKFLOW.map(w => ({ ...w, team: 'da' as const }))];
-
   const wave1Ids: Record<string, string> = {};
 
-  for (const wf of allWorkflows) {
+  const workflows: { wf: typeof SP_WORKFLOW[number]; team: 'sp' | 'da'; prompt: string }[] = [];
+
+  if (input.teams === 'both' || input.teams === 'sp') {
+    for (const wf of SP_WORKFLOW) workflows.push({ wf, team: 'sp', prompt: input.spPrompt });
+  }
+  if (input.teams === 'both' || input.teams === 'da') {
+    for (const wf of DA_WORKFLOW) workflows.push({ wf, team: 'da', prompt: input.daPrompt });
+  }
+
+  for (const { wf, team, prompt } of workflows) {
     const worker = workers.find(w => w.roleKey === wf.roleKey);
     if (!worker) continue;
 
     const phaseId = uid();
-    const leadId = wave1Ids[wf.team];
+    const leadId = wave1Ids[team];
     const deps = wf.wave === 2 && leadId ? [leadId] : [];
-
-    if (wf.wave === 1) wave1Ids[wf.team] = phaseId;
+    if (wf.wave === 1) wave1Ids[team] = phaseId;
 
     phases.push({
       id: phaseId,
       roleKey: wf.roleKey,
       workerId: worker.id,
-      task: `[상품 정보]\n${productInfo}\n\n[업무 지시]\n${wf.taskTemplate}`,
+      task: `[상품/서비스 정보]\n${prompt}\n\n[업무 지시]\n${wf.taskTemplate}`,
       status: 'pending',
       result: '',
       dependsOn: deps,
       order: wf.order,
-      team: wf.team,
+      team,
     });
   }
 
@@ -136,19 +148,20 @@ async function compileReport(productInfo: string, phases: WorkPhase[]): Promise<
   });
 }
 
-export async function runAutonomousProject(productInfo: string) {
+export async function runAutonomousProject(input: ProjectInput) {
   const s = useOfficeStore.getState();
-  const phases = createProjectPhases(productInfo);
-  s.startProject(productInfo, phases);
+  const phases = createProjectPhases(input);
+  const combinedInfo = [input.spPrompt, input.daPrompt].filter(Boolean).join('\n---\n');
+  s.startProject(combinedInfo, phases);
 
   const manager = s.workers.find(w => w.roleKey === 'manager' && !w.isManager);
   const ceo = s.workers.find(w => w.isManager);
 
+  const teamLabel = input.teams === 'sp' ? '상세페이지 팀' : input.teams === 'da' ? 'DA 팀' : '전체 팀';
   if (manager) {
-    msg(manager.id, manager.name, '', '전체', '프로젝트 시작! 팀 리더부터 기획을 시작합니다.', 'status');
+    msg(manager.id, manager.name, '', '전체', `${teamLabel} 프로젝트 시작! 리더부터 기획합니다.`, 'status');
   }
 
-  // === WAVE 1: 팀 리더 2명 동시 (김하늘 기획 + 정민수 전략) ===
   const wave1 = phases.filter(p => p.dependsOn.length === 0);
   for (const p of wave1) {
     const w = s.workers.find(v => v.id === p.workerId);
@@ -193,7 +206,7 @@ export async function runAutonomousProject(productInfo: string) {
 
   useOfficeStore.getState().setProjectStatus('compiling');
   const finalPhases = useOfficeStore.getState().project?.phases ?? phases;
-  const report = await compileReport(productInfo, finalPhases);
+  const report = await compileReport(combinedInfo, finalPhases);
 
   useOfficeStore.getState().completeProject(report);
 
