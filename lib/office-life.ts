@@ -172,9 +172,7 @@ ${recentChat || '(없음)'}
     target.role, target.roleKey,
   );
 
-  const shortResponse = targetResponse
-    ? (targetResponse.length > 100 ? targetResponse.slice(0, 100) + '...' : targetResponse)
-    : '감사합니다! 바로 적용해볼게요.';
+  const shortResponse = targetResponse?.trim() || '감사합니다! 바로 적용해볼게요.';
 
   postOfficeMsg({
     fromId: target.id, fromName: target.name,
@@ -253,9 +251,7 @@ ${chatLog || '(대화 없음)'}
                 `당신은 ${targetWorker.name}(${targetWorker.title})입니다. CEO 송승환님이 다음과 같이 말했습니다: "${observation}". 1문장으로 짧게 답변하세요.`,
                 targetWorker.role, targetWorker.roleKey,
               );
-              const shortReply = workerReply
-                ? (workerReply.length > 80 ? workerReply.slice(0, 80) + '...' : workerReply)
-                : '네, 알겠습니다! 바로 개선하겠습니다.';
+              const shortReply = workerReply?.trim() || '네, 알겠습니다! 바로 개선하겠습니다.';
               postOfficeMsg({
                 fromId: targetWorker.id, fromName: targetWorker.name,
                 toId: ceo.id, toName: ceo.name,
@@ -329,9 +325,7 @@ async function agentCollaboration() {
     workerA.role, workerA.roleKey,
   );
 
-  const question = questionResult
-    ? (questionResult.length > 120 ? questionResult.slice(0, 120) + '...' : questionResult)
-    : `${workerB.name}님, ${topic} 관련해서 의견 좀 나눌 수 있을까요?`;
+  const question = questionResult?.trim() || `${workerB.name}님, ${topic} 관련해서 의견 좀 나눌 수 있을까요?`;
 
   await delay(3000);
 
@@ -349,9 +343,7 @@ async function agentCollaboration() {
     workerB.role, workerB.roleKey,
   );
 
-  const answer = answerResult
-    ? (answerResult.length > 150 ? answerResult.slice(0, 150) + '...' : answerResult)
-    : `좋은 질문이에요! 제가 확인해보고 자료 정리해서 공유드릴게요.`;
+  const answer = answerResult?.trim() || `좋은 질문이에요! 제가 확인해보고 자료 정리해서 공유드릴게요.`;
 
   postOfficeMsg({
     fromId: workerB.id, fromName: workerB.name,

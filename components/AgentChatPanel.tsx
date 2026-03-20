@@ -1,9 +1,31 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOfficeStore } from '@/lib/store';
 import { getCharColor, AgentMessage } from '@/lib/types';
 import { addIntervention } from '@/lib/orchestrator';
+
+const MSG_PREVIEW_LEN = 120;
+
+function ChatBubble({ message, className }: { message: string; className: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const needsTruncate = message.length > MSG_PREVIEW_LEN;
+  const displayText = !needsTruncate || expanded ? message : message.slice(0, MSG_PREVIEW_LEN) + '...';
+
+  return (
+    <div className={className}>
+      {displayText}
+      {needsTruncate && (
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className="block mt-1 text-[10px] opacity-70 hover:opacity-100 underline underline-offset-2 transition-opacity"
+        >
+          {expanded ? '접기' : '더보기'}
+        </button>
+      )}
+    </div>
+  );
+}
 
 const TYPE_STYLES: Record<string, { icon: string; bg: string; text: string }> = {
   handoff:           { icon: '📦', bg: 'bg-blue-500/10',   text: 'text-blue-300' },
@@ -165,9 +187,10 @@ export default function AgentChatPanel() {
                         {m.toName && m.toName !== '전체' && <span className="text-gray-600 text-[10px]">→ {m.toName}</span>}
                         <span className="text-[10px]">{style.icon}</span>
                       </div>
-                      <div className={`rounded-2xl px-3 py-2 text-xs leading-relaxed break-words whitespace-pre-wrap ${isUser ? 'bg-amber-500/20 text-amber-200 rounded-tr-sm' : `${style.bg} ${style.text} rounded-tl-sm`}`}>
-                        {m.message}
-                      </div>
+                      <ChatBubble
+                        message={m.message}
+                        className={`rounded-2xl px-3 py-2 text-xs leading-relaxed break-words whitespace-pre-wrap ${isUser ? 'bg-amber-500/20 text-amber-200 rounded-tr-sm' : `${style.bg} ${style.text} rounded-tl-sm`}`}
+                      />
                     </div>
                   </div>
                 </div>
