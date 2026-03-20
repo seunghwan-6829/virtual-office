@@ -10,6 +10,7 @@ import WorkerStatsModal from '@/components/WorkerStatsModal';
 import ProjectInputModal from '@/components/ProjectInputModal';
 import ProjectProgressPanel from '@/components/ProjectProgressPanel';
 import FinalReportModal from '@/components/FinalReportModal';
+import WorkerPeekCard from '@/components/WorkerPeekCard';
 import { useOfficeStore } from '@/lib/store';
 
 export default function Home() {
@@ -140,6 +141,7 @@ export default function Home() {
       <WorkerStatsModal />
       <ProjectInputModal />
       <FinalReportModal />
+      <WorkerPeekCard />
     </main>
   );
 }

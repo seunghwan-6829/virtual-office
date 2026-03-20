@@ -20,6 +20,7 @@ export interface OfficeStore {
   modal: ModalState;
   project: Project | null;
   speechBubbles: SpeechBubbleData[];
+  peekWorkerId: string | null;
 
   getWorker: (id: string) => Worker | undefined;
   updateWorker: (id: string, u: Partial<Worker>) => void;
@@ -55,6 +56,7 @@ export interface OfficeStore {
   clearExpiredBubbles: () => void;
   setWorkerState: (workerId: string, state: WorkerState) => void;
   setWorkerAutonomousWalk: (fromWorkerId: string, toWorkerIdOrCEO: string) => void;
+  setWorkerPeek: (workerId: string | null) => void;
 
   addManagerLog: (log: ManagerLog) => void;
 }
@@ -118,6 +120,7 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
   modal: { type: null, workerId: null },
   project: null,
   speechBubbles: [],
+  peekWorkerId: null,
 
   getWorker: (id) => get().workers.find(w => w.id === id),
 
@@ -400,6 +403,8 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
       ),
     }));
   },
+
+  setWorkerPeek: (workerId) => set({ peekWorkerId: workerId }),
 
   addManagerLog: (log) => set(s => ({ managerLogs: [...s.managerLogs, log] })),
 }));

@@ -14,8 +14,24 @@ export default function OfficeCanvas() {
     if (!canvas) return;
 
     const engine = new GameEngine(canvas, {
-      onWorkerClick: (id: string) => useOfficeStore.getState().openTaskModal(id),
-      onManagerClick: (id: string) => useOfficeStore.getState().openManagerModal(id),
+      onWorkerClick: (id: string) => {
+        const s = useOfficeStore.getState();
+        const proj = s.project;
+        if (proj && proj.status !== 'idle' && proj.status !== 'completed') {
+          s.setWorkerPeek(id);
+        } else {
+          s.openTaskModal(id);
+        }
+      },
+      onManagerClick: (id: string) => {
+        const s = useOfficeStore.getState();
+        const proj = s.project;
+        if (proj && proj.status !== 'idle' && proj.status !== 'completed') {
+          s.setWorkerPeek(id);
+        } else {
+          s.openManagerModal(id);
+        }
+      },
       onWaitingWorkerClick: (id: string) => useOfficeStore.getState().workerStartReport(id),
       getWorkers: () => useOfficeStore.getState().workers,
       updateWorker: (id: string, u: Partial<Worker>) => useOfficeStore.getState().updateWorker(id, u),
