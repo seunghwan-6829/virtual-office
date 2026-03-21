@@ -38,7 +38,6 @@ export default function Home() {
   const openFinalReport = useOfficeStore(s => s.openFinalReport);
   const openTimeline = useOfficeStore(s => s.openTimelineModal);
   const openABCompare = useOfficeStore(s => s.openABCompare);
-  const setChatOpen = useOfficeStore(s => s.setChatPanelOpen);
   const setCopyArchiveOpen = useOfficeStore(s => s.setCopyArchiveOpen);
   const setDataStorageOpen = useOfficeStore(s => s.setDataStorageOpen);
   const updateWorkerStreaming = useOfficeStore(s => s.updateWorkerStreaming);
@@ -177,10 +176,6 @@ export default function Home() {
           <button onClick={() => setDataStorageOpen(true)}
             className="text-xs bg-violet-500/20 text-violet-400 px-2.5 py-1 rounded-full font-medium hover:bg-violet-500/30 transition-colors">
             🧠 데이터 저장소
-          </button>
-          <button onClick={() => setChatOpen(true)}
-            className="text-xs bg-cyan-500/20 text-cyan-400 px-2.5 py-1 rounded-full font-medium hover:bg-cyan-500/30 transition-colors">
-            💬 단톡방
           </button>
           {isProjectRunning && (
             <span className="text-xs bg-blue-500/20 text-blue-400 px-2.5 py-1 rounded-full animate-pulse font-medium">

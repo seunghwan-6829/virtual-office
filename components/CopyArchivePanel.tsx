@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useOfficeStore } from '@/lib/store';
 import { CopyArchiveItem } from '@/lib/types';
 import { createClient } from '@/lib/supabase/client';
@@ -19,7 +19,6 @@ export default function CopyArchivePanel() {
   const open = useOfficeStore(s => s.copyArchiveOpen);
   const setOpen = useOfficeStore(s => s.setCopyArchiveOpen);
   const archive = useOfficeStore(s => s.copyArchive);
-  const setArchive = useOfficeStore(s => s.setCopyArchive);
   const addItem = useOfficeStore(s => s.addCopyArchiveItem);
   const updateItem = useOfficeStore(s => s.updateCopyArchiveItem);
   const removeItem = useOfficeStore(s => s.removeCopyArchiveItem);
@@ -30,40 +29,49 @@ export default function CopyArchivePanel() {
   const [content, setContent] = useState('');
   const [filter, setFilter] = useState<'all' | 'project' | 'manual'>('all');
   const [loading, setLoading] = useState(false);
-
-  const loadFromSupabase = useCallback(async () => {
-    setLoading(true);
-    try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data } = await supabase
-        .from('copy_archive')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(100);
-      if (data) {
-        const items: CopyArchiveItem[] = data.map(d => ({
-          id: d.id,
-          title: d.title,
-          content: d.content,
-          source: d.source as 'project' | 'manual',
-          projectId: d.project_id ?? undefined,
-          roleKey: d.role_key ?? undefined,
-          workerName: d.worker_name ?? undefined,
-          createdAt: new Date(d.created_at).getTime(),
-          updatedAt: new Date(d.updated_at).getTime(),
-        }));
-        setArchive(items);
-      }
-    } catch { /* noop */ }
-    setLoading(false);
-  }, [setArchive]);
+  const [loaded, setLoaded] = useState(false);
+  const loadingRef = useRef(false);
 
   useEffect(() => {
-    if (open) loadFromSupabase();
-  }, [open, loadFromSupabase]);
+    if (!open || loaded || loadingRef.current) return;
+    loadingRef.current = true;
+    setLoading(true);
+
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) { setLoading(false); loadingRef.current = false; return; }
+        const { data } = await supabase
+          .from('copy_archive')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(100);
+        if (data) {
+          const items: CopyArchiveItem[] = data.map(d => ({
+            id: d.id,
+            title: d.title,
+            content: d.content,
+            source: d.source as 'project' | 'manual',
+            projectId: d.project_id ?? undefined,
+            roleKey: d.role_key ?? undefined,
+            workerName: d.worker_name ?? undefined,
+            createdAt: new Date(d.created_at).getTime(),
+            updatedAt: new Date(d.updated_at).getTime(),
+          }));
+          useOfficeStore.getState().setCopyArchive(items);
+        }
+        setLoaded(true);
+      } catch { /* noop */ }
+      setLoading(false);
+      loadingRef.current = false;
+    })();
+  }, [open, loaded]);
+
+  useEffect(() => {
+    if (!open) setLoaded(false);
+  }, [open]);
 
   const saveToSupabase = async (item: CopyArchiveItem) => {
     try {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useOfficeStore } from '@/lib/store';
 import { getCharColor } from '@/lib/types';
 import { createClient } from '@/lib/supabase/client';
@@ -16,7 +16,9 @@ interface AgentStats {
 
 interface ConversationRow {
   id: string;
+  from_id: string;
   from_name: string;
+  to_id: string;
   to_name: string;
   message: string;
   type: string;
@@ -44,75 +46,79 @@ export default function DataStoragePanel() {
   const [trainings, setTrainings] = useState<TrainingRow[]>([]);
   const [filterAgent, setFilterAgent] = useState<string>('all');
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [totalMsgs, setTotalMsgs] = useState(0);
   const [totalTraining, setTotalTraining] = useState(0);
   const [totalTasks, setTotalTasks] = useState(0);
+  const loadingRef = useRef(false);
 
   const regularWorkers = workers.filter(w => !w.isManager && w.roleKey !== 'manager');
 
-  const loadData = useCallback(async () => {
+  useEffect(() => {
+    if (!open || loaded || loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
-    try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
 
-      const [msgRes, trainRes, taskRes] = await Promise.all([
-        supabase.from('office_messages').select('id, from_id, from_name, to_id, to_name, message, type, created_at', { count: 'exact' })
-          .eq('user_id', user.id).order('created_at', { ascending: false }).limit(200),
-        supabase.from('agent_training').select('*', { count: 'exact' })
-          .eq('user_id', user.id).order('created_at', { ascending: false }).limit(100),
-        supabase.from('task_records').select('id, worker_id, worker_name', { count: 'exact' })
-          .eq('user_id', user.id),
-      ]);
+    const rw = useOfficeStore.getState().workers.filter(w => !w.isManager && w.roleKey !== 'manager');
 
-      setTotalMsgs(msgRes.count ?? 0);
-      setTotalTraining(trainRes.count ?? 0);
-      setTotalTasks(taskRes.count ?? 0);
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) { setLoading(false); loadingRef.current = false; return; }
 
-      setConversations((msgRes.data ?? []) as ConversationRow[]);
-      setTrainings((trainRes.data ?? []) as TrainingRow[]);
+        const [msgRes, trainRes, taskRes] = await Promise.all([
+          supabase.from('office_messages').select('id, from_id, from_name, to_id, to_name, message, type, created_at', { count: 'exact' })
+            .eq('user_id', user.id).order('created_at', { ascending: false }).limit(200),
+          supabase.from('agent_training').select('*', { count: 'exact' })
+            .eq('user_id', user.id).order('created_at', { ascending: false }).limit(100),
+          supabase.from('task_records').select('id, worker_id, worker_name', { count: 'exact' })
+            .eq('user_id', user.id),
+        ]);
 
-      const agentMap = new Map<string, AgentStats>();
-      for (const w of regularWorkers) {
-        agentMap.set(w.id, {
-          roleKey: w.roleKey,
-          workerName: w.name,
-          charId: w.charId,
-          messageCount: 0,
-          trainingCount: 0,
-          taskCount: 0,
-        });
-      }
+        setTotalMsgs(msgRes.count ?? 0);
+        setTotalTraining(trainRes.count ?? 0);
+        setTotalTasks(taskRes.count ?? 0);
 
-      for (const m of (msgRes.data ?? [])) {
-        const a = agentMap.get(m.from_id);
-        if (a) a.messageCount++;
-        const b = agentMap.get(m.to_id);
-        if (b) b.messageCount++;
-      }
+        setConversations((msgRes.data ?? []) as ConversationRow[]);
+        setTrainings((trainRes.data ?? []) as TrainingRow[]);
 
-      for (const t of (trainRes.data ?? [])) {
-        const w = regularWorkers.find(v => v.roleKey === t.role_key);
-        if (w) {
-          const a = agentMap.get(w.id);
-          if (a) a.trainingCount++;
+        const agentMap = new Map<string, AgentStats>();
+        for (const w of rw) {
+          agentMap.set(w.id, {
+            roleKey: w.roleKey, workerName: w.name, charId: w.charId,
+            messageCount: 0, trainingCount: 0, taskCount: 0,
+          });
         }
-      }
 
-      for (const t of (taskRes.data ?? [])) {
-        const a = agentMap.get(t.worker_id);
-        if (a) a.taskCount++;
-      }
+        for (const m of (msgRes.data ?? [])) {
+          const a = agentMap.get(m.from_id);
+          if (a) a.messageCount++;
+          const b = agentMap.get(m.to_id);
+          if (b) b.messageCount++;
+        }
 
-      setStats(Array.from(agentMap.values()));
-    } catch { /* noop */ }
-    setLoading(false);
-  }, [regularWorkers]);
+        for (const t of (trainRes.data ?? [])) {
+          const w = rw.find(v => v.roleKey === t.role_key);
+          if (w) { const a = agentMap.get(w.id); if (a) a.trainingCount++; }
+        }
+
+        for (const t of (taskRes.data ?? [])) {
+          const a = agentMap.get(t.worker_id);
+          if (a) a.taskCount++;
+        }
+
+        setStats(Array.from(agentMap.values()));
+        setLoaded(true);
+      } catch { /* noop */ }
+      setLoading(false);
+      loadingRef.current = false;
+    })();
+  }, [open, loaded]);
 
   useEffect(() => {
-    if (open) loadData();
-  }, [open, loadData]);
+    if (!open) setLoaded(false);
+  }, [open]);
 
   if (!open) return null;
 
