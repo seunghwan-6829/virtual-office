@@ -139,6 +139,26 @@ async function saveMsgToSupabase(msg: AgentMessage) {
   if (msgQueue.length > 0) saveMsgToSupabase(msgQueue[0]);
 }
 
+async function saveAsTrainingData(fromName: string, fromRoleKey: string, toName: string, toRoleKey: string, message: string, type: string) {
+  if (type === 'casual' || type === 'status' || !message || message.length < 15) return;
+  try {
+    const userId = await getUid();
+    if (!userId) return;
+    const sb = createClient();
+    const roleKey = type === 'manager_tip' ? toRoleKey : fromRoleKey;
+    const trainingType = type === 'manager_tip' ? 'reference' : type === 'collab' ? 'reference' : 'feedback';
+    const prefix = type === 'manager_tip'
+      ? `[관리자 팁 from ${fromName}]`
+      : `[${fromName} → ${toName} 협업 대화]`;
+    await sb.from('agent_training').insert({
+      user_id: userId,
+      role_key: roleKey,
+      training_type: trainingType,
+      content: `${prefix}\n${message}`,
+    });
+  } catch { /* noop */ }
+}
+
 async function saveCEONoteToSupabase(note: { id: string; content: string; category: string; timestamp: number; acknowledged: boolean; feedback?: string }) {
   try {
     const userId = await getUid();
@@ -283,6 +303,8 @@ ${recentChat || '(없음)'}
     message: tipMessage,
     type: 'manager_tip',
   });
+
+  saveAsTrainingData(manager.name, 'manager', target.name, target.roleKey, tipMessage, 'manager_tip');
 
   await delay(3000);
 
@@ -496,6 +518,9 @@ async function agentCollaboration() {
     message: answer,
     type: 'collab',
   });
+
+  saveAsTrainingData(workerA.name, workerA.roleKey, workerB.name, workerB.roleKey, question, 'collab');
+  saveAsTrainingData(workerB.name, workerB.roleKey, workerA.name, workerA.roleKey, answer, 'collab');
 
   await delay(3000);
   walkBack(workerA.id);

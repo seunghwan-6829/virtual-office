@@ -22,6 +22,7 @@ import CompetitorModal, { CompetitorResultNotification } from '@/components/Comp
 import TimelineReplay from '@/components/TimelineReplay';
 import CopyArchivePanel from '@/components/CopyArchivePanel';
 import DataStoragePanel from '@/components/DataStoragePanel';
+import AdminPanel from '@/components/AdminPanel';
 import { useOfficeStore } from '@/lib/store';
 import { ProjectTemplate, CompetitorInput } from '@/lib/types';
 import { loadProjectHistory, initStorageFromSupabase } from '@/lib/storage';
@@ -43,6 +44,7 @@ export default function Home() {
   const updateWorkerStreaming = useOfficeStore(s => s.updateWorkerStreaming);
   const [historyCount, setHistoryCount] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -159,7 +161,7 @@ export default function Home() {
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800">
         <div className="flex items-center gap-3">
           {isAdmin && (
-            <button onClick={() => router.push('/admin')}
+            <button onClick={() => setAdminOpen(true)}
               className="text-xs bg-amber-500/20 text-amber-400 px-2 py-1 rounded-full font-bold hover:bg-amber-500/30 transition-colors">
               관리자
             </button>
@@ -256,6 +258,7 @@ export default function Home() {
       <TimelineReplay />
       <CopyArchivePanel />
       <DataStoragePanel />
+      <AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} />
     </main>
   );
 }
