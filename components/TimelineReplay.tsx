@@ -21,15 +21,14 @@ export default function TimelineReplay() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  if (modal.type !== 'timeline') return null;
-
-  const events = timeline.filter(e => project && e.projectId === project.id);
+  const isOpen = modal.type === 'timeline';
+  const events = isOpen && project ? timeline.filter(e => e.projectId === project.id) : [];
   const startTime = events.length > 0 ? events[0].timestamp : 0;
   const endTime = events.length > 0 ? events[events.length - 1].timestamp : 0;
   const duration = endTime - startTime;
 
   useEffect(() => {
-    if (!playing) {
+    if (!isOpen || !playing) {
       if (timerRef.current) clearInterval(timerRef.current);
       return;
     }
@@ -45,7 +44,9 @@ export default function TimelineReplay() {
     }, 1000 / speed);
 
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [playing, speed, events.length]);
+  }, [isOpen, playing, speed, events.length]);
+
+  if (!isOpen) return null;
 
   const progress = events.length > 1
     ? ((events[currentIdx]?.timestamp ?? startTime) - startTime) / Math.max(duration, 1) * 100
@@ -63,7 +64,6 @@ export default function TimelineReplay() {
           <button onClick={closeModal} className="text-gray-500 hover:text-white">✕</button>
         </div>
 
-        {/* Controls */}
         <div className="p-3 border-b border-gray-800 flex items-center gap-3">
           <button onClick={() => { setPlaying(!playing); }}
             className="w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center text-lg">
@@ -90,7 +90,6 @@ export default function TimelineReplay() {
           </div>
         </div>
 
-        {/* Event List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-1.5">
           {events.map((ev, i) => {
             const w = workers.find(v => v.id === ev.actorId);

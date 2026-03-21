@@ -12,6 +12,7 @@ export default function ABCompareView() {
   const workers = useOfficeStore(s => s.workers);
   const closeModal = useOfficeStore(s => s.closeModal);
   const [votes, setVotes] = useState<Record<string, 'A' | 'B'>>({});
+  const [currentIdx, setCurrentIdx] = useState(0);
 
   if (modal.type !== 'abCompare' || !project) return null;
 
@@ -36,8 +37,8 @@ export default function ABCompareView() {
     );
   }
 
-  const [currentIdx, setCurrentIdx] = useState(0);
-  const pair = abPairs[currentIdx];
+  const safeIdx = Math.min(currentIdx, abPairs.length - 1);
+  const pair = abPairs[safeIdx];
   const w = workers.find(v => v.id === pair.a.workerId);
 
   return (
@@ -52,13 +53,13 @@ export default function ABCompareView() {
             )}
             <div>
               <h3 className="text-white font-bold text-sm">A/B 테스트 비교 — {w?.name} ({w?.title})</h3>
-              <p className="text-gray-500 text-xs">{currentIdx + 1} / {abPairs.length}</p>
+              <p className="text-gray-500 text-xs">{safeIdx + 1} / {abPairs.length}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button disabled={currentIdx === 0} onClick={() => setCurrentIdx(i => i - 1)}
+            <button disabled={safeIdx === 0} onClick={() => setCurrentIdx(i => i - 1)}
               className="px-3 py-1 bg-gray-800 text-gray-300 rounded-lg text-xs disabled:opacity-30">← 이전</button>
-            <button disabled={currentIdx === abPairs.length - 1} onClick={() => setCurrentIdx(i => i + 1)}
+            <button disabled={safeIdx === abPairs.length - 1} onClick={() => setCurrentIdx(i => i + 1)}
               className="px-3 py-1 bg-gray-800 text-gray-300 rounded-lg text-xs disabled:opacity-30">다음 →</button>
             <button onClick={closeModal} className="px-3 py-1 bg-gray-800 text-gray-400 rounded-lg text-xs">✕</button>
           </div>
@@ -99,7 +100,7 @@ export default function ABCompareView() {
               return (
                 <button key={i} onClick={() => setCurrentIdx(i)}
                   className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
-                    i === currentIdx ? 'bg-white text-black' :
+                    i === safeIdx ? 'bg-white text-black' :
                     v === 'A' ? 'bg-blue-500/30 text-blue-400' :
                     v === 'B' ? 'bg-purple-500/30 text-purple-400' :
                     'bg-gray-800 text-gray-500'
