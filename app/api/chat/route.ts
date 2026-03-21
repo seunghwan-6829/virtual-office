@@ -8,7 +8,7 @@ export const runtime = 'edge';
 
 export async function POST(req: Request) {
   try {
-    const { instruction, role, roleKey, model, provider, previousResult, revisionFeedback } = await req.json();
+    const { instruction, role, roleKey, model, provider, previousResult, revisionFeedback, maxTokens } = await req.json();
 
     let systemPrompt = getRoleSystemPrompt((roleKey || 'spPlanner') as RoleKey, role);
 
@@ -26,6 +26,7 @@ export async function POST(req: Request) {
       model: llmModel,
       system: systemPrompt,
       prompt,
+      ...(maxTokens ? { maxTokens: Number(maxTokens) } : {}),
     });
 
     return result.toTextStreamResponse();

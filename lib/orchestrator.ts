@@ -174,12 +174,13 @@ async function callLLMStreaming(
   instruction: string,
   worker: { role: string; roleKey: string; model: string; name: string; title: string; provider?: string },
   onChunk?: (text: string) => void,
+  maxTokens?: number,
 ): Promise<string> {
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instruction, role: worker.role, roleKey: worker.roleKey, model: worker.model, provider: worker.provider }),
+      body: JSON.stringify({ instruction, role: worker.role, roleKey: worker.roleKey, model: worker.model, provider: worker.provider, maxTokens }),
     });
     if (!res.ok) throw new Error(`${res.status}`);
     const reader = res.body?.getReader();
@@ -272,37 +273,160 @@ function generateDialogue(fromName: string, toName: string, context: string): st
 async function compileReport(productInfo: string, phases: WorkPhase[], input: ProjectInput): Promise<string> {
   const s = useOfficeStore.getState();
   const mgr = s.workers.find(w => w.roleKey === 'manager' && !w.isManager);
-
-  const mainPhases = phases.filter(p => !p.abVariant || p.abVariant === 'A');
-  const body = mainPhases.map(p => {
-    const w = s.workers.find(v => v.id === p.workerId);
-    return `## ${w?.name} (${w?.title})\n${p.result}`;
-  }).join('\n\n---\n\n');
-
-  const managerHistory = getAgentHistory('manager');
-  const competitorCtx = competitorToPrompt(input.competitorData);
-
-  let abSection = '';
-  if (input.abEnabled) {
-    const bPhases = phases.filter(p => p.abVariant === 'B');
-    if (bPhases.length > 0) {
-      abSection = '\n\n[A/B 테스트 B안 결과]\n' + bPhases.map(p => {
-        const w = s.workers.find(v => v.id === p.workerId);
-        return `## ${w?.name} B안\n${p.result.slice(0, 500)}`;
-      }).join('\n\n');
-    }
-  }
-
-  const instruction = `당신은 중간관리자입니다. 팀원들의 작업 결과를 종합하여 CEO 보고용 최종 보고서를 작성하세요.\n\n[상품 정보]\n${productInfo}\n\n[팀원 작업 결과]\n${body}${abSection}${competitorCtx}\n\n보고서 구성:\n1. 핵심 요약 (Executive Summary)\n2. 상세페이지 팀 종합\n3. DA 팀 종합\n4. 크로스 팀 시너지 전략\n5. 최종 제언 및 액션 아이템${managerHistory}`;
-
-  return callLLMStreaming(instruction, {
+  const mgrConfig = {
     role: mgr?.role ?? '중간관리자',
-    roleKey: 'manager',
+    roleKey: 'manager' as const,
     model: mgr?.model ?? 'claude-opus-4-6',
     name: mgr?.name ?? '윤성현',
     title: mgr?.title ?? '중간관리자',
     provider: mgr?.provider ?? 'anthropic',
-  });
+  };
+
+  const mainPhases = phases.filter(p => !p.abVariant || p.abVariant === 'A');
+  const spPhases = mainPhases.filter(p => p.team === 'sp');
+  const daPhases = mainPhases.filter(p => p.team === 'da');
+
+  const formatPhases = (ps: WorkPhase[]) => ps.map(p => {
+    const w = s.workers.find(v => v.id === p.workerId);
+    return `### ${w?.name} (${w?.title})\n${p.result}`;
+  }).join('\n\n');
+
+  const spBody = formatPhases(spPhases);
+  const daBody = formatPhases(daPhases);
+  const managerHistory = getAgentHistory('manager');
+  const competitorCtx = competitorToPrompt(input.competitorData);
+
+  let abSummary = '';
+  if (input.abEnabled) {
+    const bPhases = phases.filter(p => p.abVariant === 'B');
+    if (bPhases.length > 0) {
+      abSummary = '\n\n[A/B 테스트 B안 요약]\n' + bPhases.map(p => {
+        const w = s.workers.find(v => v.id === p.workerId);
+        return `- ${w?.name} B안: ${p.result.slice(0, 300)}`;
+      }).join('\n');
+    }
+  }
+
+  const commonCtx = `[상품 정보]\n${productInfo}${competitorCtx}${abSummary}${managerHistory}`;
+
+  const updateStream = (accumulated: string) => {
+    const project = useOfficeStore.getState().project;
+    if (project) {
+      useOfficeStore.getState().completeProject(accumulated);
+      useOfficeStore.getState().setProjectStatus('compiling');
+    }
+  };
+
+  bubble(mgr?.id ?? '', '섹션 1/5: 핵심 요약 작성 중...', 8000);
+  const sec1 = await callLLMStreaming(
+    `당신은 중간관리자입니다. CEO 보고용 최종 보고서의 "핵심 요약(Executive Summary)" 섹션만 작성하세요.
+
+${commonCtx}
+
+[상세페이지 팀 결과 요약]
+${spBody.slice(0, 2000)}
+
+[DA 팀 결과 요약]
+${daBody.slice(0, 2000)}
+
+작성 지침:
+- "# 1. 핵심 요약 (Executive Summary)" 제목으로 시작
+- 프로젝트 개요, 핵심 성과, 주요 발견사항을 포함
+- 3~5개 핵심 포인트를 불릿으로 정리
+- 마크다운 형식으로 작성`,
+    mgrConfig, undefined, 4096,
+  );
+
+  let accumulated = sec1;
+  updateStream(accumulated);
+
+  bubble(mgr?.id ?? '', '섹션 2/5: 상세페이지 팀 종합...', 8000);
+  const sec2 = await callLLMStreaming(
+    `당신은 중간관리자입니다. CEO 보고용 최종 보고서의 "상세페이지 팀 종합" 섹션만 작성하세요.
+
+${commonCtx}
+
+[상세페이지 팀 전체 작업 결과]
+${spBody}
+
+작성 지침:
+- "# 2. 상세페이지 팀 종합" 제목으로 시작
+- 각 팀원(기획, 카피, 이미지, 분석)의 핵심 결과물을 정리
+- 팀 내 시너지와 연계 전략을 분석
+- 강점과 보완점을 명시
+- 마크다운 형식으로 작성, 표/리스트 활용`,
+    mgrConfig, undefined, 4096,
+  );
+
+  accumulated += '\n\n---\n\n' + sec2;
+  updateStream(accumulated);
+
+  bubble(mgr?.id ?? '', '섹션 3/5: DA 팀 종합...', 8000);
+  const sec3 = await callLLMStreaming(
+    `당신은 중간관리자입니다. CEO 보고용 최종 보고서의 "DA 팀 종합" 섹션만 작성하세요.
+
+${commonCtx}
+
+[DA 팀 전체 작업 결과]
+${daBody}
+
+작성 지침:
+- "# 3. DA 팀 종합" 제목으로 시작
+- 각 팀원(전략, 카피, 크리에이티브, 분석)의 핵심 결과물을 정리
+- 매체별 전략과 예산 배분 방향을 포함
+- KPI 및 성과 예측을 명시
+- 마크다운 형식으로 작성, 표/리스트 활용`,
+    mgrConfig, undefined, 4096,
+  );
+
+  accumulated += '\n\n---\n\n' + sec3;
+  updateStream(accumulated);
+
+  bubble(mgr?.id ?? '', '섹션 4/5: 크로스 팀 시너지...', 8000);
+  const sec4 = await callLLMStreaming(
+    `당신은 중간관리자입니다. CEO 보고용 최종 보고서의 "크로스 팀 시너지 전략" 섹션만 작성하세요.
+
+${commonCtx}
+
+[상세페이지 팀 핵심 요약]
+${spBody.slice(0, 1500)}
+
+[DA 팀 핵심 요약]
+${daBody.slice(0, 1500)}
+
+작성 지침:
+- "# 4. 크로스 팀 시너지 전략" 제목으로 시작
+- 상세페이지 ↔ DA 간 연계 전략 (메시지 일관성, 리타겟팅 등)
+- 통합 마케팅 퍼널 설계
+- 데이터 기반 최적화 루프 제안
+- 마크다운 형식으로 작성`,
+    mgrConfig, undefined, 4096,
+  );
+
+  accumulated += '\n\n---\n\n' + sec4;
+  updateStream(accumulated);
+
+  bubble(mgr?.id ?? '', '섹션 5/5: 최종 제언 및 액션 아이템...', 8000);
+  const sec5 = await callLLMStreaming(
+    `당신은 중간관리자입니다. CEO 보고용 최종 보고서의 "최종 제언 및 액션 아이템" 섹션만 작성하세요.
+
+${commonCtx}
+
+[이전 섹션 핵심 요약]
+${sec1.slice(0, 1000)}
+
+작성 지침:
+- "# 5. 최종 제언 및 액션 아이템" 제목으로 시작
+- 단기(1주), 중기(1개월), 장기(3개월) 액션 플랜 테이블
+- 우선순위별 실행 로드맵
+- 리스크 요인과 대응 방안
+- 예상 ROI 또는 성과 기대치
+- 마크다운 형식으로 작성, 표 활용`,
+    mgrConfig, undefined, 4096,
+  );
+
+  accumulated += '\n\n---\n\n' + sec5;
+  return accumulated;
 }
 
 export async function runAutonomousProject(input: ProjectInput) {
