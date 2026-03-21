@@ -4,7 +4,7 @@ import {
   WorkerState, LLMProvider, RoleKey, TaskRecord,
   Project, WorkPhase, AgentMessage, ProjectStatus, PhaseStatus,
   SpeechBubbleData, AgentPersonality, DEFAULT_PERSONALITY,
-  TimelineEvent, PROJECT_COLORS, CEONote,
+  TimelineEvent, PROJECT_COLORS, CEONote, CopyArchiveItem,
 } from './types';
 import { OFFICES, MANAGER_POSITION, MANAGER_DIRECTION, getCEOWaitPosition, getOffice, CORRIDOR_Y } from './game/office-map';
 import { buildPathToWait, buildPathToSeat } from './game/pathfinding';
@@ -83,6 +83,19 @@ export interface OfficeStore {
   addCEONote: (note: Omit<CEONote, 'id'>) => void;
   acknowledgeCEONote: (id: string) => void;
   feedbackCEONote: (id: string, feedback: string) => void;
+
+  reviewProject: (feedback?: string) => void;
+
+  copyArchive: CopyArchiveItem[];
+  addCopyArchiveItem: (item: Omit<CopyArchiveItem, 'id'>) => void;
+  updateCopyArchiveItem: (id: string, updates: Partial<CopyArchiveItem>) => void;
+  removeCopyArchiveItem: (id: string) => void;
+  setCopyArchive: (items: CopyArchiveItem[]) => void;
+
+  copyArchiveOpen: boolean;
+  setCopyArchiveOpen: (open: boolean) => void;
+  dataStorageOpen: boolean;
+  setDataStorageOpen: (open: boolean) => void;
 }
 
 function makeWorker(
@@ -522,4 +535,33 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
   feedbackCEONote: (id, feedback) => set(s => ({
     ceoNotes: s.ceoNotes.map(n => n.id === id ? { ...n, feedback, acknowledged: true } : n),
   })),
+
+  reviewProject: (feedback) => set(s => {
+    if (!s.project) return {};
+    if (feedback) {
+      return {
+        project: { ...s.project, reviewFeedback: feedback, reviewed: false },
+      };
+    }
+    return {
+      project: { ...s.project, reviewed: true, reviewFeedback: undefined },
+    };
+  }),
+
+  copyArchive: [],
+  addCopyArchiveItem: (item) => set(s => ({
+    copyArchive: [...s.copyArchive, { ...item, id: uid() }],
+  })),
+  updateCopyArchiveItem: (id, updates) => set(s => ({
+    copyArchive: s.copyArchive.map(c => c.id === id ? { ...c, ...updates, updatedAt: Date.now() } : c),
+  })),
+  removeCopyArchiveItem: (id) => set(s => ({
+    copyArchive: s.copyArchive.filter(c => c.id !== id),
+  })),
+  setCopyArchive: (items) => set({ copyArchive: items }),
+
+  copyArchiveOpen: false,
+  setCopyArchiveOpen: (open) => set({ copyArchiveOpen: open }),
+  dataStorageOpen: false,
+  setDataStorageOpen: (open) => set({ dataStorageOpen: open }),
 }));

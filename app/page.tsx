@@ -20,6 +20,8 @@ import ABCompareView from '@/components/ABCompareView';
 import ResultEditor from '@/components/ResultEditor';
 import CompetitorModal from '@/components/CompetitorModal';
 import TimelineReplay from '@/components/TimelineReplay';
+import CopyArchivePanel from '@/components/CopyArchivePanel';
+import DataStoragePanel from '@/components/DataStoragePanel';
 import { useOfficeStore } from '@/lib/store';
 import { ProjectTemplate, CompetitorInput } from '@/lib/types';
 import { loadProjectHistory, initStorageFromSupabase } from '@/lib/storage';
@@ -37,18 +39,18 @@ export default function Home() {
   const openTimeline = useOfficeStore(s => s.openTimelineModal);
   const openABCompare = useOfficeStore(s => s.openABCompare);
   const setChatOpen = useOfficeStore(s => s.setChatPanelOpen);
+  const setCopyArchiveOpen = useOfficeStore(s => s.setCopyArchiveOpen);
+  const setDataStorageOpen = useOfficeStore(s => s.setDataStorageOpen);
   const updateWorkerStreaming = useOfficeStore(s => s.updateWorkerStreaming);
   const [historyCount, setHistoryCount] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      supabase.from('profiles').select('role').eq('id', user.id).single()
-        .then(({ data }) => { if (data?.role === 'admin') setIsAdmin(true); });
-    });
+    fetch('/api/auth/status')
+      .then(r => r.json())
+      .then(d => { if (d.role === 'admin') setIsAdmin(true); })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -168,6 +170,14 @@ export default function Home() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setCopyArchiveOpen(true)}
+            className="text-xs bg-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-full font-medium hover:bg-emerald-500/30 transition-colors">
+            📁 카피 보관함
+          </button>
+          <button onClick={() => setDataStorageOpen(true)}
+            className="text-xs bg-violet-500/20 text-violet-400 px-2.5 py-1 rounded-full font-medium hover:bg-violet-500/30 transition-colors">
+            🧠 데이터 저장소
+          </button>
           <button onClick={() => setChatOpen(true)}
             className="text-xs bg-cyan-500/20 text-cyan-400 px-2.5 py-1 rounded-full font-medium hover:bg-cyan-500/30 transition-colors">
             💬 단톡방
@@ -246,6 +256,8 @@ export default function Home() {
       <ResultEditor />
       <CompetitorModal onComplete={handleCompetitorComplete} />
       <TimelineReplay />
+      <CopyArchivePanel />
+      <DataStoragePanel />
     </main>
   );
 }

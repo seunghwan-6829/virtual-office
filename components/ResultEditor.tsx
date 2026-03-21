@@ -7,6 +7,12 @@ import { regenerateSection } from '@/lib/orchestrator';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+const mdComponents = {
+  a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>
+  ),
+};
+
 export default function ResultEditor() {
   const modal = useOfficeStore(s => s.modal);
   const project = useOfficeStore(s => s.project);
@@ -103,7 +109,7 @@ export default function ResultEditor() {
                     </div>
                   ) : (
                     <div className="report-content text-sm">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{phase.result}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{phase.result}</ReactMarkdown>
                     </div>
                   )}
                 </div>

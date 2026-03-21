@@ -5,6 +5,12 @@ import { getCharColor } from '@/lib/types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+const mdComponents = {
+  a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>
+  ),
+};
+
 export default function LiveStreamPanel() {
   const liveId = useOfficeStore(s => s.liveStreamWorkerId);
   const setLive = useOfficeStore(s => s.setLiveStreamWorker);
@@ -54,7 +60,7 @@ export default function LiveStreamPanel() {
       <div className="flex-1 overflow-y-auto p-4">
         {displayText ? (
           <div className="report-content text-xs leading-relaxed">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayText}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{displayText}</ReactMarkdown>
             {isStreaming && <span className="inline-block w-2 h-4 bg-green-400 animate-pulse ml-0.5" />}
           </div>
         ) : (

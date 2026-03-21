@@ -189,6 +189,20 @@ export interface Project {
   templateId?: string;
   competitorData?: string;
   abEnabled?: boolean;
+  reviewed?: boolean;
+  reviewFeedback?: string;
+}
+
+export interface CopyArchiveItem {
+  id: string;
+  title: string;
+  content: string;
+  source: 'project' | 'manual';
+  projectId?: string;
+  roleKey?: string;
+  workerName?: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface SpeechBubbleData {

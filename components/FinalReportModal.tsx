@@ -6,12 +6,21 @@ import { getCharColor } from '@/lib/types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+const mdComponents = {
+  a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>
+  ),
+};
+
 export default function FinalReportModal() {
   const modal = useOfficeStore(s => s.modal);
   const project = useOfficeStore(s => s.project);
   const workers = useOfficeStore(s => s.workers);
   const closeModal = useOfficeStore(s => s.closeModal);
+  const reviewProject = useOfficeStore(s => s.reviewProject);
   const [tab, setTab] = useState<'report' | 'sp' | 'da' | 'log'>('report');
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackText, setFeedbackText] = useState('');
 
   if (modal.type !== 'finalReport' || !project) return null;
 
@@ -79,7 +88,7 @@ export default function FinalReportModal() {
         <div className="flex-1 overflow-y-auto p-5">
           {tab === 'report' && (
             <div className="report-content">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
                 {project.finalReport || '보고서를 불러오는 중...'}
               </ReactMarkdown>
             </div>
@@ -101,7 +110,7 @@ export default function FinalReportModal() {
                       <span className="text-gray-400 text-xs">{w?.title}</span>
                     </div>
                     <div className="px-4 py-3 report-content text-sm">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{phase.result || '결과 없음'}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{phase.result || '결과 없음'}</ReactMarkdown>
                     </div>
                   </div>
                 );
@@ -125,7 +134,7 @@ export default function FinalReportModal() {
                       <span className="text-gray-400 text-xs">{w?.title}</span>
                     </div>
                     <div className="px-4 py-3 report-content text-sm">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{phase.result || '결과 없음'}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{phase.result || '결과 없음'}</ReactMarkdown>
                     </div>
                   </div>
                 );
@@ -151,13 +160,73 @@ export default function FinalReportModal() {
           )}
         </div>
 
+        {/* Review Feedback Input */}
+        {showFeedback && (
+          <div className="px-5 pb-3 flex-shrink-0">
+            <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)}
+              placeholder="수정이 필요한 부분을 구체적으로 입력해주세요..."
+              autoFocus rows={3}
+              className="w-full bg-gray-800 text-white placeholder-gray-500 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-500/50 border border-amber-700/50" />
+            <div className="flex gap-2 mt-2">
+              <button onClick={() => setShowFeedback(false)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-xl text-xs transition-colors">
+                취소
+              </button>
+              <button onClick={() => {
+                if (feedbackText.trim()) {
+                  reviewProject(feedbackText.trim());
+                  setFeedbackText('');
+                  setShowFeedback(false);
+                  closeModal();
+                }
+              }} disabled={!feedbackText.trim()}
+                className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-xl text-xs font-medium transition-colors">
+                수정 요청 보내기
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Footer */}
-        <div className="p-4 border-t border-gray-800 flex-shrink-0">
-          <button onClick={closeModal}
-            className="w-full px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-medium transition-colors">
-            닫기
-          </button>
-        </div>
+        {!showFeedback && (
+          <div className="p-4 border-t border-gray-800 flex-shrink-0">
+            {project.reviewed ? (
+              <div className="flex items-center justify-between">
+                <span className="text-green-400 text-sm font-medium">검토 완료</span>
+                <button onClick={closeModal}
+                  className="px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm transition-colors">
+                  닫기
+                </button>
+              </div>
+            ) : project.reviewFeedback ? (
+              <div className="space-y-2">
+                <div className="bg-amber-900/20 border border-amber-700/30 rounded-lg p-2">
+                  <span className="text-amber-400 text-[10px] font-bold">수정 요청됨:</span>
+                  <p className="text-amber-300 text-xs mt-0.5">{project.reviewFeedback}</p>
+                </div>
+                <button onClick={closeModal}
+                  className="w-full px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm transition-colors">
+                  닫기
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <button onClick={handleDownloadPDF}
+                  className="px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-sm transition-colors">
+                  PDF
+                </button>
+                <button onClick={() => setShowFeedback(true)}
+                  className="px-4 py-2.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 rounded-xl text-sm transition-colors border border-amber-700/30">
+                  수정 요청
+                </button>
+                <button onClick={() => { reviewProject(); closeModal(); }}
+                  className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-xl text-sm font-medium transition-colors">
+                  검토 완료
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

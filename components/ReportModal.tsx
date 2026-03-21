@@ -6,6 +6,12 @@ import { getCharColor } from '@/lib/types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+const mdComponents = {
+  a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>
+  ),
+};
+
 export default function ReportModal() {
   const modal = useOfficeStore(s => s.modal);
   const workers = useOfficeStore(s => s.workers);
@@ -104,7 +110,7 @@ export default function ReportModal() {
             </div>
           ) : (
             <div className="bg-gray-800/40 rounded-xl px-5 py-4 overflow-y-auto border border-gray-700/40 report-content">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
                 {task.result || '결과를 불러오는 중...'}
               </ReactMarkdown>
             </div>

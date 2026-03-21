@@ -1,6 +1,28 @@
 import { useOfficeStore } from './store';
-import { RoleKey, WorkPhase, AgentMessage, AgentPersonality, CompetitorInput } from './types';
+import { RoleKey, WorkPhase, AgentMessage, AgentPersonality, CompetitorInput, Worker, Project } from './types';
 import { saveProjectSnapshot, getAgentHistory } from './storage';
+import { createClient } from './supabase/client';
+
+async function archiveCopyToSupabase(project: Project, workers: Worker[]) {
+  try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const spPhases = project.phases.filter(p => p.team === 'sp' && p.status === 'completed' && p.result);
+    for (const sp of spPhases) {
+      const w = workers.find(v => v.id === sp.workerId);
+      await supabase.from('copy_archive').insert({
+        user_id: user.id,
+        title: `[${w?.name ?? sp.roleKey}] ${project.productInfo.slice(0, 50)}`,
+        content: sp.result,
+        source: 'project',
+        project_id: project.id,
+        role_key: sp.roleKey,
+        worker_name: w?.name ?? '',
+      });
+    }
+  } catch { /* noop */ }
+}
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -375,6 +397,22 @@ export async function runAutonomousProject(input: ProjectInput) {
       const nameMap: Record<string, string> = {};
       s.workers.forEach(w => { nameMap[w.id] = w.name; });
       saveProjectSnapshot(finalProject, nameMap);
+
+      const spPhases = finalProject.phases.filter(p => p.team === 'sp' && p.status === 'completed' && p.result);
+      for (const sp of spPhases) {
+        const w = s.workers.find(v => v.id === sp.workerId);
+        useOfficeStore.getState().addCopyArchiveItem({
+          title: `[${w?.name ?? sp.roleKey}] ${finalProject.productInfo.slice(0, 50)}`,
+          content: sp.result,
+          source: 'project',
+          projectId: finalProject.id,
+          roleKey: sp.roleKey,
+          workerName: w?.name,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      }
+      archiveCopyToSupabase(finalProject, s.workers);
     }
   } catch { /* noop */ }
 

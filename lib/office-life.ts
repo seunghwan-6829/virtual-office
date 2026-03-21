@@ -118,7 +118,16 @@ function bubbleText(text: string): string {
   return text.length > 10 ? text.slice(0, 10) + '...' : text;
 }
 
+const recentMsgHashes = new Set<string>();
+const DEDUP_WINDOW_MS = 30_000;
+
 function postOfficeMsg(msg: Omit<AgentMessage, 'id' | 'timestamp'>) {
+  const hash = `${msg.fromId}|${msg.toId}|${msg.message.slice(0, 60)}`;
+  if (recentMsgHashes.has(hash)) return;
+
+  recentMsgHashes.add(hash);
+  setTimeout(() => recentMsgHashes.delete(hash), DEDUP_WINDOW_MS);
+
   const s = useOfficeStore.getState();
   const full: AgentMessage = { ...msg, id: uid(), timestamp: Date.now() };
   s.addOfficeMessage(full);
@@ -190,18 +199,24 @@ async function managerPatrol() {
   const recentChat = s.officeMessages.slice(-10).map(m => `${m.fromName}: ${m.message}`).join('\n');
 
   const researchResult = await callLLM(
-    `당신은 중간관리자(윤성현)입니다. ${target.name}(${target.title})에게 지금 당장 도움이 될 실질적인 업계 정보를 리서치해주세요.
+    `당신은 중간관리자(윤성현)입니다. ${target.name}(${target.title})에게 업무에 도움이 될 조언을 해주세요.
 
 [대상] ${target.name} (${target.title} / ${target.role})
 [팀] ${teamLabel} 팀
 [최근 사내 대화]
 ${recentChat || '(없음)'}
 
+중요 규칙:
+- 실제로 존재하지 않는 데이터나 수치를 만들어내지 마세요
+- "~데이터를 공유합니다" 같은 실제로 하지 않은 행동을 언급하지 마세요
+- 일반적인 업계 트렌드나 방법론 기반의 실용적 조언만 하세요
+- "~해보시면 어떨까요?", "~을 고려해보세요" 형태의 제안을 하세요
+
 다음 형식으로 응답하세요 (JSON):
 {
-  "research": "리서치한 핵심 정보 (3~4문장, 구체적 수치/데이터 포함)",
-  "verification": "교차 검증 결과 (1문장)",
-  "tip": "${target.name}님에게 전달할 핵심 팁 (2문장 이내, 반말 금지, 존댓말)"
+  "research": "업무 관련 일반적 조언 (3~4문장, 날조된 수치 없이)",
+  "verification": "해당 조언의 근거 (1문장)",
+  "tip": "${target.name}님에게 전달할 핵심 팁 (2문장 이내, 존댓말)"
 }
 반드시 위 JSON만 반환하세요.`
   );
@@ -277,6 +292,12 @@ ${workerStates}
 ${chatLog || '(대화 없음)'}
 
 [완료된 프로젝트 수] ${s.projectQueue.length}건
+
+중요 규칙:
+- 실제로 존재하지 않는 데이터나 수치를 만들어내지 마세요
+- "~보고서를 확인했는데" 같은 실제로 하지 않은 행동을 언급하지 마세요
+- 관찰 가능한 사실(직원 상태, 대화 내용)에 기반한 개선점만 제안하세요
+- "~해보면 어떨까요?", "~을 고려해봅시다" 형태의 제안을 하세요
 
 다음 형식으로 응답하세요 (JSON):
 {
@@ -388,7 +409,13 @@ async function agentCollaboration() {
   s.setWorkerAutonomousWalk(workerA.id, workerB.id);
 
   const questionResult = await callLLM(
-    `당신은 ${workerA.name}(${workerA.title})입니다. 동료 ${workerB.name}(${workerB.title})에게 "${topic}" 관련으로 실질적인 질문이나 자료 요청을 하세요. 구체적인 업무 내용으로 2문장 이내로 작성하세요. 존댓말 사용.`,
+    `당신은 ${workerA.name}(${workerA.title})입니다. 동료 ${workerB.name}(${workerB.title})에게 "${topic}" 관련으로 질문하거나 의견을 구하세요.
+
+중요 규칙:
+- 실제로 하지 않은 작업을 했다고 말하지 마세요 (예: "데이터를 분석해봤는데" 같은 거짓 언급 금지)
+- 구체적 수치나 결과를 날조하지 마세요
+- "~하면 어떨까요?", "~에 대해 어떻게 생각하세요?" 같은 질문/제안 형태로 말하세요
+- 2문장 이내, 존댓말 사용`,
     workerA.role, workerA.roleKey,
   );
 
@@ -406,7 +433,13 @@ async function agentCollaboration() {
   await delay(4000);
 
   const answerResult = await callLLM(
-    `당신은 ${workerB.name}(${workerB.title})입니다. 동료 ${workerA.name}(${workerA.title})이 다음과 같이 물었습니다: "${question}". 구체적이고 실질적인 답변을 2~3문장으로 해주세요. 가능하면 수치나 구체적 방법을 포함하세요. 존댓말 사용.`,
+    `당신은 ${workerB.name}(${workerB.title})입니다. 동료 ${workerA.name}(${workerA.title})이 다음과 같이 물었습니다: "${question}".
+
+중요 규칙:
+- 실제로 하지 않은 작업을 했다고 말하지 마세요
+- 구체적 수치를 날조하지 마세요 (일반적인 업계 상식은 가능)
+- "~해보면 좋을 것 같아요", "~방향으로 진행해볼까요?" 같은 제안 형태로 답변하세요
+- 2~3문장, 존댓말 사용`,
     workerB.role, workerB.roleKey,
   );
 
