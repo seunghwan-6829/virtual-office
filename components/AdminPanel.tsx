@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 
 interface Profile {
   id: string;
@@ -24,12 +23,13 @@ export default function AdminPanel({ open, onClose }: Props) {
 
   const load = async () => {
     setLoading(true);
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-    setProfiles(data ?? []);
+    try {
+      const res = await fetch('/api/admin/profiles');
+      if (res.ok) {
+        const data = await res.json();
+        setProfiles(Array.isArray(data) ? data : []);
+      }
+    } catch { /* noop */ }
     setLoading(false);
   };
 
@@ -38,8 +38,11 @@ export default function AdminPanel({ open, onClose }: Props) {
   }, [open]);
 
   const updateStatus = async (userId: string, status: string) => {
-    const supabase = createClient();
-    await supabase.from('profiles').update({ status }).eq('id', userId);
+    await fetch('/api/admin/profiles', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, status }),
+    });
     load();
   };
 
