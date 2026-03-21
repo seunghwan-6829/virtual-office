@@ -149,7 +149,7 @@ export default function DataStoragePanel() {
   };
 
   return (
-    <div className="fixed left-0 top-0 bottom-0 z-50 w-[520px] bg-gray-900/98 backdrop-blur-xl border-r border-gray-700 shadow-2xl flex flex-col">
+    <div className="fixed left-0 top-0 bottom-0 z-50 w-[520px] bg-gray-950 backdrop-blur-sm border-r border-gray-700 shadow-2xl flex flex-col">
       {/* Header */}
       <div className="p-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
         <div>

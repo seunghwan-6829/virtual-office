@@ -143,7 +143,7 @@ export default function CopyArchivePanel() {
   const selected = archive.find(c => c.id === selectedId);
 
   return (
-    <div className="fixed right-0 top-0 bottom-0 z-50 w-[480px] bg-gray-900/98 backdrop-blur-xl border-l border-gray-700 shadow-2xl flex flex-col">
+    <div className="fixed right-0 top-0 bottom-0 z-50 w-[480px] bg-gray-950 backdrop-blur-sm border-l border-gray-700 shadow-2xl flex flex-col">
       {/* Header */}
       <div className="p-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
         <div>
