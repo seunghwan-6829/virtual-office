@@ -18,7 +18,7 @@ import PersonalityModal from '@/components/PersonalityModal';
 import TemplateSelector from '@/components/TemplateSelector';
 import ABCompareView from '@/components/ABCompareView';
 import ResultEditor from '@/components/ResultEditor';
-import CompetitorModal from '@/components/CompetitorModal';
+import CompetitorModal, { CompetitorResultNotification } from '@/components/CompetitorModal';
 import TimelineReplay from '@/components/TimelineReplay';
 import CopyArchivePanel from '@/components/CopyArchivePanel';
 import DataStoragePanel from '@/components/DataStoragePanel';
@@ -146,9 +146,11 @@ export default function Home() {
     if (typeof fn === 'function') (fn as (t: ProjectTemplate) => void)(t);
   };
 
-  const handleCompetitorComplete = (data: CompetitorInput) => {
+  const handleCompetitorComplete = (data: CompetitorInput, analysis: string) => {
     const fn = (window as unknown as Record<string, unknown>).__applyCompetitor;
     if (typeof fn === 'function') (fn as (d: CompetitorInput) => void)(data);
+    const showFn = (window as unknown as Record<string, unknown>).__showCompetitorResult;
+    if (typeof showFn === 'function') (showFn as (r: string) => void)(analysis);
   };
 
   return (
@@ -250,6 +252,7 @@ export default function Home() {
       <ABCompareView />
       <ResultEditor />
       <CompetitorModal onComplete={handleCompetitorComplete} />
+      <CompetitorResultNotification />
       <TimelineReplay />
       <CopyArchivePanel />
       <DataStoragePanel />
