@@ -17,11 +17,15 @@ function randRange(min: number, max: number): number {
 const CHAT_STORAGE_KEY = 'virtual-office-chat';
 const CEO_NOTES_KEY = 'virtual-office-ceo-notes';
 
+let cachedUid: string | null = null;
+
 async function getUid(): Promise<string | null> {
+  if (cachedUid) return cachedUid;
   try {
     const sb = createClient();
     const { data: { user } } = await sb.auth.getUser();
-    return user?.id ?? null;
+    if (user?.id) cachedUid = user.id;
+    return cachedUid;
   } catch { return null; }
 }
 
@@ -102,16 +106,53 @@ function persistChat() {
   } catch { /* noop */ }
 }
 
+const msgQueue: AgentMessage[] = [];
+let flushing = false;
+
 async function saveMsgToSupabase(msg: AgentMessage) {
-  const userId = await getUid();
-  if (!userId) return;
-  const sb = createClient();
-  await sb.from('office_messages').upsert({
-    id: msg.id, user_id: userId,
-    from_id: msg.fromId, from_name: msg.fromName,
-    to_id: msg.toId, to_name: msg.toName,
-    message: msg.message, type: msg.type,
-  }).then(() => {});
+  msgQueue.push(msg);
+  if (flushing) return;
+  flushing = true;
+
+  await new Promise(r => setTimeout(r, 2000));
+
+  const batch = msgQueue.splice(0);
+  if (batch.length === 0) { flushing = false; return; }
+
+  try {
+    const userId = await getUid();
+    if (!userId) { flushing = false; return; }
+    const sb = createClient();
+    const rows = batch.map(m => ({
+      id: m.id, user_id: userId,
+      from_id: m.fromId, from_name: m.fromName,
+      to_id: m.toId, to_name: m.toName,
+      message: m.message.slice(0, 5000), type: m.type,
+    }));
+    const { error } = await sb.from('office_messages').upsert(rows);
+    if (error) console.warn('[office-msg] save error:', error.message);
+  } catch (e) {
+    console.warn('[office-msg] save exception:', e);
+  }
+  flushing = false;
+
+  if (msgQueue.length > 0) saveMsgToSupabase(msgQueue[0]);
+}
+
+async function saveCEONoteToSupabase(note: { id: string; content: string; category: string; timestamp: number; acknowledged: boolean; feedback?: string }) {
+  try {
+    const userId = await getUid();
+    if (!userId) return;
+    const sb = createClient();
+    await sb.from('ceo_notes').upsert({
+      id: note.id,
+      user_id: userId,
+      content: note.content,
+      category: note.category,
+      acknowledged: note.acknowledged,
+      feedback: note.feedback ?? null,
+    });
+  } catch { /* noop */ }
 }
 
 function bubbleText(text: string): string {
@@ -322,6 +363,10 @@ ${chatLog || '(대화 없음)'}
             timestamp: Date.now(),
             acknowledged: false,
           });
+
+          const latestNotes = useOfficeStore.getState().ceoNotes;
+          const lastNote = latestNotes[latestNotes.length - 1];
+          if (lastNote) saveCEONoteToSupabase(lastNote);
 
           const observation = parsed.observation || '전체적으로 좋습니다. 한 가지만 더 개선해봅시다.';
           postOfficeMsg({
