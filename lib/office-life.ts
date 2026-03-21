@@ -159,22 +159,6 @@ async function saveAsTrainingData(fromName: string, fromRoleKey: string, toName:
   } catch { /* noop */ }
 }
 
-async function saveCEONoteToSupabase(note: { id: string; content: string; category: string; timestamp: number; acknowledged: boolean; feedback?: string }) {
-  try {
-    const userId = await getUid();
-    if (!userId) return;
-    const sb = createClient();
-    await sb.from('ceo_notes').upsert({
-      id: note.id,
-      user_id: userId,
-      content: note.content,
-      category: note.category,
-      acknowledged: note.acknowledged,
-      feedback: note.feedback ?? null,
-    });
-  } catch { /* noop */ }
-}
-
 function bubbleText(text: string): string {
   return text.length > 10 ? text.slice(0, 10) + '...' : text;
 }
@@ -330,104 +314,7 @@ ${recentChat || '(없음)'}
   walkBack(manager.id);
 }
 
-// ================================================================
-// CEO PATROL — 10분마다 나와서 개선사항 찾고 기록 + 대상자 응답
-// ================================================================
-
-async function ceoPatrol() {
-  const s = useOfficeStore.getState();
-  const ceo = s.workers.find(w => w.isManager);
-  if (!ceo) return;
-
-  const recentMessages = s.officeMessages.slice(-20);
-  const workerStates = s.workers
-    .filter(w => !w.isManager && w.roleKey !== 'manager')
-    .map(w => `${w.name}(${w.title}): ${w.state}`)
-    .join(', ');
-  const chatLog = recentMessages.map(m => `[${m.fromName}→${m.toName}] ${m.message}`).join('\n');
-
-  const instruction = `당신은 CEO(송승환)입니다. 현재 사무실을 관찰하고 개선할 점을 찾으세요.
-
-[현재 직원 상태]
-${workerStates}
-
-[최근 사내 대화]
-${chatLog || '(대화 없음)'}
-
-[완료된 프로젝트 수] ${s.projectQueue.length}건
-
-중요 규칙:
-- 실제로 존재하지 않는 데이터나 수치를 만들어내지 마세요
-- "~보고서를 확인했는데" 같은 실제로 하지 않은 행동을 언급하지 마세요
-- 관찰 가능한 사실(직원 상태, 대화 내용)에 기반한 개선점만 제안하세요
-- "~해보면 어떨까요?", "~을 고려해봅시다" 형태의 제안을 하세요
-
-다음 형식으로 응답하세요 (JSON):
-{
-  "category": "process|quality|efficiency|team|general",
-  "content": "개선사항 상세 내용 (2~3문장)",
-  "targetName": "개선 대상 직원 이름 (없으면 빈 문자열)",
-  "observation": "단톡방에 올릴 짧은 한마디 (1~2문장)"
-}
-반드시 위 JSON만 반환하세요.`;
-
-  const result = await callLLM(instruction);
-
-  if (result) {
-    try {
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed.content) {
-          s.addCEONote({
-            content: parsed.content,
-            category: parsed.category || 'general',
-            timestamp: Date.now(),
-            acknowledged: false,
-          });
-
-          const latestNotes = useOfficeStore.getState().ceoNotes;
-          const lastNote = latestNotes[latestNotes.length - 1];
-          if (lastNote) saveCEONoteToSupabase(lastNote);
-
-          const observation = parsed.observation || '전체적으로 좋습니다. 한 가지만 더 개선해봅시다.';
-          postOfficeMsg({
-            fromId: ceo.id, fromName: ceo.name,
-            toId: '', toName: '전체',
-            message: observation,
-            type: 'ceo_note',
-          });
-
-          if (parsed.targetName) {
-            const targetWorker = s.workers.find(w => w.name === parsed.targetName);
-            if (targetWorker) {
-              await delay(3000);
-              const workerReply = await callLLM(
-                `당신은 ${targetWorker.name}(${targetWorker.title})입니다. CEO 송승환님이 다음과 같이 말했습니다: "${observation}". 1문장으로 짧게 답변하세요.`,
-                targetWorker.role, targetWorker.roleKey,
-              );
-              const shortReply = workerReply?.trim() || '네, 알겠습니다! 바로 개선하겠습니다.';
-              postOfficeMsg({
-                fromId: targetWorker.id, fromName: targetWorker.name,
-                toId: ceo.id, toName: ceo.name,
-                message: shortReply,
-                type: 'collab',
-              });
-            }
-          }
-        }
-      }
-    } catch {
-      postOfficeMsg({
-        fromId: ceo.id, fromName: ceo.name,
-        toId: '', toName: '전체',
-        message: '잘 가고 있습니다. 계속 집중해주세요.',
-        type: 'ceo_note',
-      });
-    }
-  }
-  persistChat();
-}
+// CEO PATROL 제거 — CEO 메모는 수동으로만 관리
 
 // ================================================================
 // AGENT COLLABORATION — 실제 LLM 대화로 자료 교환 + 걸어서 복귀
@@ -531,7 +418,6 @@ async function agentCollaboration() {
 // ================================================================
 
 let managerTimer: ReturnType<typeof setTimeout> | null = null;
-let ceoTimer: ReturnType<typeof setTimeout> | null = null;
 let collabTimer: ReturnType<typeof setTimeout> | null = null;
 let running = false;
 
@@ -541,14 +427,6 @@ function scheduleManager() {
     try { await managerPatrol(); } catch { /* noop */ }
     if (running) scheduleManager();
   }, randRange(180000, 300000));
-}
-
-function scheduleCEO() {
-  if (!running) return;
-  ceoTimer = setTimeout(async () => {
-    try { await ceoPatrol(); } catch { /* noop */ }
-    if (running) scheduleCEO();
-  }, randRange(600000, 660000));
 }
 
 function scheduleCollab() {
@@ -566,14 +444,12 @@ export function startOfficeLife() {
   loadPersistedChat();
 
   setTimeout(() => scheduleManager(), randRange(20000, 40000));
-  setTimeout(() => scheduleCEO(), randRange(40000, 70000));
   setTimeout(() => scheduleCollab(), randRange(15000, 30000));
 }
 
 export function stopOfficeLife() {
   running = false;
   if (managerTimer) { clearTimeout(managerTimer); managerTimer = null; }
-  if (ceoTimer) { clearTimeout(ceoTimer); ceoTimer = null; }
   if (collabTimer) { clearTimeout(collabTimer); collabTimer = null; }
 }
 
