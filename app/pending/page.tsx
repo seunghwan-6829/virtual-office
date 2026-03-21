@@ -10,23 +10,21 @@ export default function PendingPage() {
 
   const checkStatus = async () => {
     setChecking(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.push('/login'); return; }
+    try {
+      const res = await fetch('/api/auth/status');
+      const data = await res.json();
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('status')
-      .eq('id', user.id)
-      .single();
-
-    if (profile?.status === 'active') {
-      router.push('/');
-      router.refresh();
-    } else if (profile?.status === 'rejected') {
-      await supabase.auth.signOut();
-      router.push('/login?error=rejected');
-    }
+      if (data.status === 'active') {
+        router.push('/');
+        router.refresh();
+      } else if (data.status === 'rejected') {
+        const supabase = createClient();
+        await supabase.auth.signOut();
+        router.push('/login?error=rejected');
+      } else if (data.status === 'unauthenticated') {
+        router.push('/login');
+      }
+    } catch { /* noop */ }
     setChecking(false);
   };
 
@@ -38,6 +36,7 @@ export default function PendingPage() {
   };
 
   useEffect(() => {
+    checkStatus();
     const iv = setInterval(checkStatus, 10000);
     return () => clearInterval(iv);
   }, []);

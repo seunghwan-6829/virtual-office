@@ -41,7 +41,26 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  const { data: profile } = await supabase
+  // Use service role to bypass RLS for profile status check
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey) {
+    // Fallback: allow through if service key not available
+    if (isPublic) return supabaseResponse;
+    return supabaseResponse;
+  }
+
+  const adminClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    serviceKey,
+    {
+      cookies: {
+        getAll() { return []; },
+        setAll() {},
+      },
+    },
+  );
+
+  const { data: profile } = await adminClient
     .from('profiles')
     .select('status, role')
     .eq('id', user.id)
