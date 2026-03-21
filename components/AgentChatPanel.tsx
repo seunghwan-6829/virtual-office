@@ -60,6 +60,8 @@ export default function AgentChatPanel() {
   const [input, setInput] = useState('');
   const [targetPhaseId, setTargetPhaseId] = useState<string>('');
   const [tab, setTab] = useState<'chat' | 'notes'>('chat');
+  const [feedbackId, setFeedbackId] = useState<string | null>(null);
+  const [feedbackText, setFeedbackText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const messages = mergeMessages(project?.messages ?? [], officeMessages);
@@ -234,11 +236,13 @@ export default function AgentChatPanel() {
           {ceoNotes.slice().reverse().map(note => (
             <div key={note.id}
               className={`rounded-xl p-3 border transition-all ${
-                note.acknowledged ? 'border-gray-800 bg-gray-800/30 opacity-60' : 'border-amber-500/30 bg-amber-500/5'
+                note.feedback ? 'border-orange-500/30 bg-orange-500/5 opacity-80'
+                  : note.acknowledged ? 'border-gray-800 bg-gray-800/30 opacity-60'
+                  : 'border-amber-500/30 bg-amber-500/5'
               }`}>
               <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-amber-400 text-xs font-bold">👔 CEO 메모</span>
+                  <span className="text-amber-400 text-xs font-bold">CEO 메모</span>
                   <span className="text-gray-600 text-[10px] px-1.5 py-0.5 bg-gray-800 rounded">{CATEGORY_LABELS[note.category] ?? note.category}</span>
                 </div>
                 <span className="text-gray-600 text-[10px]">
@@ -246,12 +250,47 @@ export default function AgentChatPanel() {
                 </span>
               </div>
               <p className="text-gray-300 text-xs leading-relaxed">{note.content}</p>
+              {note.feedback && (
+                <div className="mt-2 px-2 py-1.5 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+                  <span className="text-orange-400 text-[10px] font-bold block mb-0.5">보완 피드백:</span>
+                  <p className="text-orange-300 text-[11px]">{note.feedback}</p>
+                </div>
+              )}
               {!note.acknowledged && (
-                <button
-                  onClick={() => useOfficeStore.getState().acknowledgeCEONote(note.id)}
-                  className="mt-2 text-[10px] text-amber-400 hover:text-amber-300 transition-colors">
-                  ✓ 확인 완료
-                </button>
+                <div className="mt-2 flex items-center gap-2">
+                  <button onClick={() => useOfficeStore.getState().acknowledgeCEONote(note.id)}
+                    className="text-[10px] text-green-400 hover:text-green-300 transition-colors px-2 py-1 bg-green-500/10 rounded-lg">
+                    확인 완료
+                  </button>
+                  <button onClick={() => { setFeedbackId(note.id); setFeedbackText(''); }}
+                    className="text-[10px] text-orange-400 hover:text-orange-300 transition-colors px-2 py-1 bg-orange-500/10 rounded-lg">
+                    보완 필요
+                  </button>
+                </div>
+              )}
+              {feedbackId === note.id && (
+                <div className="mt-2 space-y-1.5">
+                  <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)}
+                    placeholder="보완이 필요한 부분을 적어주세요..."
+                    rows={2}
+                    className="w-full bg-gray-800 text-white text-xs rounded-lg px-3 py-2 border border-orange-500/30 focus:outline-none focus:ring-1 focus:ring-orange-500/50 resize-none" />
+                  <div className="flex gap-1.5">
+                    <button onClick={() => {
+                      if (feedbackText.trim()) {
+                        useOfficeStore.getState().feedbackCEONote(note.id, feedbackText.trim());
+                        setFeedbackId(null);
+                      }
+                    }}
+                      disabled={!feedbackText.trim()}
+                      className="text-[10px] px-2 py-1 bg-orange-600 hover:bg-orange-500 disabled:bg-gray-700 text-white rounded-lg transition-colors">
+                      피드백 전달
+                    </button>
+                    <button onClick={() => setFeedbackId(null)}
+                      className="text-[10px] px-2 py-1 bg-gray-700 text-gray-400 rounded-lg hover:bg-gray-600 transition-colors">
+                      취소
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           ))}

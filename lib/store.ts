@@ -82,6 +82,7 @@ export interface OfficeStore {
   addOfficeMessage: (msg: AgentMessage) => void;
   addCEONote: (note: Omit<CEONote, 'id'>) => void;
   acknowledgeCEONote: (id: string) => void;
+  feedbackCEONote: (id: string, feedback: string) => void;
 }
 
 function makeWorker(
@@ -516,5 +517,9 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
 
   acknowledgeCEONote: (id) => set(s => ({
     ceoNotes: s.ceoNotes.map(n => n.id === id ? { ...n, acknowledged: true } : n),
+  })),
+
+  feedbackCEONote: (id, feedback) => set(s => ({
+    ceoNotes: s.ceoNotes.map(n => n.id === id ? { ...n, feedback, acknowledged: true } : n),
   })),
 }));

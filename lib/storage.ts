@@ -1,14 +1,40 @@
 import { TaskRecord, Project, RoleKey } from './types';
+import { createClient } from './supabase/client';
 
 const TASK_KEY = 'virtual-office-records';
 const PROJECT_KEY = 'virtual-office-projects';
 
-// === Task Records (개별 작업) ===
+async function getUserId(): Promise<string | null> {
+  try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id ?? null;
+  } catch { return null; }
+}
+
+// === Task Records ===
 
 export function saveTaskRecord(record: TaskRecord): void {
   const records = loadTaskRecords();
   records.push(record);
   safeSet(TASK_KEY, records, 200);
+  saveTaskToSupabase(record);
+}
+
+async function saveTaskToSupabase(record: TaskRecord) {
+  const userId = await getUserId();
+  if (!userId) return;
+  const supabase = createClient();
+  await supabase.from('task_records').upsert({
+    id: record.id,
+    user_id: userId,
+    worker_id: record.workerId,
+    worker_name: record.workerName,
+    instruction: record.instruction.slice(0, 5000),
+    result: record.result.slice(0, 10000),
+    duration_ms: record.durationMs,
+    metadata: { workerTitle: record.workerTitle, roleKey: record.roleKey, revisions: record.revisions.length },
+  });
 }
 
 export function loadTaskRecords(): TaskRecord[] {
@@ -19,7 +45,35 @@ export function getWorkerRecords(workerId: string): TaskRecord[] {
   return loadTaskRecords().filter(r => r.workerId === workerId);
 }
 
-// === Project History (자율 프로젝트) ===
+export async function syncTasksFromSupabase() {
+  const userId = await getUserId();
+  if (!userId) return;
+  const supabase = createClient();
+  const { data } = await supabase
+    .from('task_records')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(200);
+  if (data && data.length > 0) {
+    const records: TaskRecord[] = data.map(d => ({
+      id: d.id,
+      workerId: d.worker_id,
+      workerName: d.worker_name,
+      workerTitle: d.metadata?.workerTitle ?? '',
+      roleKey: d.metadata?.roleKey ?? 'spPlanner',
+      instruction: d.instruction,
+      result: d.result,
+      revisions: [],
+      createdAt: new Date(d.created_at).getTime(),
+      completedAt: new Date(d.created_at).getTime() + (d.duration_ms ?? 0),
+      durationMs: d.duration_ms ?? 0,
+    }));
+    safeSet(TASK_KEY, records, 200);
+  }
+}
+
+// === Project History ===
 
 export interface ProjectSnapshot {
   id: string;
@@ -54,10 +108,50 @@ export function saveProjectSnapshot(project: Project, workerNames: Record<string
   const history = loadProjectHistory();
   history.push(snap);
   safeSet(PROJECT_KEY, history, 50);
+  saveProjectToSupabase(snap);
+}
+
+async function saveProjectToSupabase(snap: ProjectSnapshot) {
+  const userId = await getUserId();
+  if (!userId) return;
+  const supabase = createClient();
+  await supabase.from('project_snapshots').upsert({
+    id: snap.id,
+    user_id: userId,
+    product_info: snap.productInfo,
+    final_report: snap.finalReport,
+    phases: snap.phases,
+    worker_names: Object.fromEntries(snap.phases.map(p => [p.roleKey, p.workerName])),
+  });
 }
 
 export function loadProjectHistory(): ProjectSnapshot[] {
   return safeGet<ProjectSnapshot[]>(PROJECT_KEY) ?? [];
+}
+
+export async function syncProjectsFromSupabase() {
+  const userId = await getUserId();
+  if (!userId) return;
+  const supabase = createClient();
+  const { data } = await supabase
+    .from('project_snapshots')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (data && data.length > 0) {
+    const snaps: ProjectSnapshot[] = data.map(d => ({
+      id: d.id,
+      productInfo: d.product_info ?? '',
+      phases: (d.phases as ProjectSnapshot['phases']) ?? [],
+      finalReport: d.final_report ?? '',
+      messageCount: 0,
+      createdAt: new Date(d.created_at).getTime(),
+      completedAt: new Date(d.created_at).getTime(),
+      durationMs: 0,
+    }));
+    safeSet(PROJECT_KEY, snaps, 50);
+  }
 }
 
 export function getAgentHistory(roleKey: RoleKey, limit = 3): string {
@@ -79,12 +173,7 @@ export function getAgentHistory(roleKey: RoleKey, limit = 3): string {
   return `\n\n[과거 작업 히스토리 - 참고하여 더 나은 결과를 만드세요]\n${entries.join('\n---\n')}`;
 }
 
-export function getProjectStats(): {
-  totalProjects: number;
-  totalPhases: number;
-  avgDurationMs: number;
-  roleStats: Record<string, number>;
-} {
+export function getProjectStats() {
   const history = loadProjectHistory();
   const roleStats: Record<string, number> = {};
   let totalPhases = 0;
@@ -113,18 +202,11 @@ export function getAllRecordsAsCSV(): string {
   if (records.length === 0) return '';
   const header = 'id,workerName,workerTitle,roleKey,instruction,result,revisions,createdAt,completedAt,durationMs';
   const rows = records.map(r =>
-    [
-      r.id,
-      `"${r.workerName}"`,
-      `"${r.workerTitle}"`,
-      r.roleKey,
+    [r.id, `"${r.workerName}"`, `"${r.workerTitle}"`, r.roleKey,
       `"${r.instruction.replace(/"/g, '""').slice(0, 200)}"`,
       `"${r.result.slice(0, 200).replace(/"/g, '""')}"`,
-      r.revisions.length,
-      new Date(r.createdAt).toISOString(),
-      new Date(r.completedAt).toISOString(),
-      r.durationMs,
-    ].join(','),
+      r.revisions.length, new Date(r.createdAt).toISOString(),
+      new Date(r.completedAt).toISOString(), r.durationMs].join(','),
   );
   return [header, ...rows].join('\n');
 }
@@ -135,11 +217,15 @@ export function getAllRecordsAsJSON(): string {
 
 export function getFullExport(): string {
   return JSON.stringify({
-    tasks: loadTaskRecords(),
-    projects: loadProjectHistory(),
-    stats: getProjectStats(),
-    exportedAt: new Date().toISOString(),
+    tasks: loadTaskRecords(), projects: loadProjectHistory(),
+    stats: getProjectStats(), exportedAt: new Date().toISOString(),
   }, null, 2);
+}
+
+// === Init: sync from Supabase on load ===
+
+export async function initStorageFromSupabase() {
+  await Promise.all([syncTasksFromSupabase(), syncProjectsFromSupabase()]);
 }
 
 // === Helpers ===
@@ -148,9 +234,7 @@ function safeGet<T>(key: string): T | null {
   try {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 function safeSet<T>(key: string, data: T[], maxItems: number): void {

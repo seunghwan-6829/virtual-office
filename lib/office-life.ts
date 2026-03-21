@@ -1,5 +1,6 @@
 import { useOfficeStore } from './store';
 import { AgentMessage } from './types';
+import { createClient } from './supabase/client';
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -16,7 +17,15 @@ function randRange(min: number, max: number): number {
 const CHAT_STORAGE_KEY = 'virtual-office-chat';
 const CEO_NOTES_KEY = 'virtual-office-ceo-notes';
 
-export function loadPersistedChat() {
+async function getUid(): Promise<string | null> {
+  try {
+    const sb = createClient();
+    const { data: { user } } = await sb.auth.getUser();
+    return user?.id ?? null;
+  } catch { return null; }
+}
+
+export async function loadPersistedChat() {
   try {
     const raw = localStorage.getItem(CHAT_STORAGE_KEY);
     if (raw) {
@@ -37,6 +46,51 @@ export function loadPersistedChat() {
       }
     }
   } catch { /* noop */ }
+
+  try {
+    const userId = await getUid();
+    if (!userId) return;
+    const sb = createClient();
+    const { data: msgs } = await sb
+      .from('office_messages')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(300);
+    if (msgs && msgs.length > 0) {
+      const s = useOfficeStore.getState();
+      const existingIds = new Set(s.officeMessages.map(m => m.id));
+      for (const d of msgs.reverse()) {
+        if (!existingIds.has(d.id)) {
+          s.addOfficeMessage({
+            id: d.id, fromId: d.from_id, fromName: d.from_name,
+            toId: d.to_id, toName: d.to_name,
+            message: d.message, type: d.type,
+            timestamp: new Date(d.created_at).getTime(),
+          });
+        }
+      }
+    }
+    const { data: notes } = await sb
+      .from('ceo_notes')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (notes && notes.length > 0) {
+      const s = useOfficeStore.getState();
+      const existingNoteIds = new Set(s.ceoNotes.map(n => n.id));
+      for (const n of notes.reverse()) {
+        if (!existingNoteIds.has(n.id)) {
+          s.addCEONote({
+            content: n.content, category: n.category,
+            timestamp: new Date(n.created_at).getTime(),
+            acknowledged: n.acknowledged, feedback: n.feedback,
+          });
+        }
+      }
+    }
+  } catch { /* noop */ }
 }
 
 function persistChat() {
@@ -46,6 +100,18 @@ function persistChat() {
     const notes = useOfficeStore.getState().ceoNotes;
     localStorage.setItem(CEO_NOTES_KEY, JSON.stringify(notes));
   } catch { /* noop */ }
+}
+
+async function saveMsgToSupabase(msg: AgentMessage) {
+  const userId = await getUid();
+  if (!userId) return;
+  const sb = createClient();
+  await sb.from('office_messages').upsert({
+    id: msg.id, user_id: userId,
+    from_id: msg.fromId, from_name: msg.fromName,
+    to_id: msg.toId, to_name: msg.toName,
+    message: msg.message, type: msg.type,
+  }).then(() => {});
 }
 
 function bubbleText(text: string): string {
@@ -61,6 +127,7 @@ function postOfficeMsg(msg: Omit<AgentMessage, 'id' | 'timestamp'>) {
   }
   s.setSpeechBubble(msg.fromId, bubbleText(msg.message), 5000);
   persistChat();
+  saveMsgToSupabase(full);
 }
 
 async function callLLM(instruction: string, role = '중간관리자', roleKey = 'manager'): Promise<string> {

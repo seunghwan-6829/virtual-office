@@ -1,11 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useOfficeStore } from '@/lib/store';
 import { getCharColor } from '@/lib/types';
 import { loadTaskRecords, getAllRecordsAsCSV, getAllRecordsAsJSON } from '@/lib/storage';
+import { createClient } from '@/lib/supabase/client';
 
-type Tab = 'overview' | 'workers' | 'history' | 'export';
+type Tab = 'overview' | 'workers' | 'training' | 'intervene' | 'history' | 'export';
+
+interface TrainingItem {
+  id: string;
+  role_key: string;
+  training_type: string;
+  content: string;
+  created_at: string;
+}
 
 export default function ManagerDashboard() {
   const modal = useOfficeStore(s => s.modal);
@@ -13,6 +22,13 @@ export default function ManagerDashboard() {
   const managerLogs = useOfficeStore(s => s.managerLogs);
   const closeModal = useOfficeStore(s => s.closeModal);
   const [tab, setTab] = useState<Tab>('overview');
+  const [selectedWorkerForTraining, setSelectedWorkerForTraining] = useState<string | null>(null);
+  const [trainingType, setTrainingType] = useState<'instruction' | 'reference' | 'feedback'>('instruction');
+  const [trainingContent, setTrainingContent] = useState('');
+  const [trainingItems, setTrainingItems] = useState<TrainingItem[]>([]);
+  const [trainingLoading, setTrainingLoading] = useState(false);
+  const [interventionTarget, setInterventionTarget] = useState<string | null>(null);
+  const [interventionMsg, setInterventionMsg] = useState('');
 
   if (modal.type !== 'manager') return null;
 
@@ -31,6 +47,76 @@ export default function ManagerDashboard() {
     const a = document.createElement('a');
     a.href = url; a.download = filename; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const loadTrainingData = async (roleKey: string) => {
+    setTrainingLoading(true);
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setTrainingLoading(false); return; }
+    const { data } = await supabase
+      .from('agent_training')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('role_key', roleKey)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    setTrainingItems(data ?? []);
+    setTrainingLoading(false);
+  };
+
+  const saveTraining = async () => {
+    if (!selectedWorkerForTraining || !trainingContent.trim()) return;
+    const w = regularWorkers.find(v => v.id === selectedWorkerForTraining);
+    if (!w) return;
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from('agent_training').insert({
+      user_id: user.id,
+      role_key: w.roleKey,
+      training_type: trainingType,
+      content: trainingContent.trim(),
+    });
+    setTrainingContent('');
+    loadTrainingData(w.roleKey);
+  };
+
+  const deleteTraining = async (id: string) => {
+    const supabase = createClient();
+    await supabase.from('agent_training').delete().eq('id', id);
+    if (selectedWorkerForTraining) {
+      const w = regularWorkers.find(v => v.id === selectedWorkerForTraining);
+      if (w) loadTrainingData(w.roleKey);
+    }
+  };
+
+  const sendIntervention = () => {
+    if (!interventionTarget || !interventionMsg.trim()) return;
+    const w = workers.find(v => v.id === interventionTarget);
+    if (!w) return;
+    const s = useOfficeStore.getState();
+    s.addOfficeMessage({
+      id: Math.random().toString(36).slice(2),
+      fromId: 'user', fromName: 'CEO (나)',
+      toId: w.id, toName: w.name,
+      message: interventionMsg.trim(),
+      type: 'user_intervention',
+      timestamp: Date.now(),
+    });
+    s.setSpeechBubble(w.id, '메시지 수신!', 3000);
+    setInterventionMsg('');
+  };
+
+  const TABS: [Tab, string][] = [
+    ['overview', '개요'], ['workers', '직원별'], ['training', '학습'],
+    ['intervene', '개입'], ['history', '히스토리'], ['export', '내보내기'],
+  ];
+
+  const TRAINING_TYPES: Record<string, { label: string; desc: string }> = {
+    instruction: { label: '작업 지시', desc: '이 에이전트가 작업 시 따라야 할 지시사항' },
+    reference: { label: '참고 자료', desc: '작업에 참고할 자료나 컨텍스트' },
+    feedback: { label: '피드백', desc: '이전 작업에 대한 개선 피드백' },
   };
 
   return (
@@ -54,10 +140,10 @@ export default function ManagerDashboard() {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-800 flex-shrink-0">
-          {([['overview', '📊 개요'], ['workers', '👥 직원별'], ['history', '📋 히스토리'], ['export', '💾 내보내기']] as [Tab, string][]).map(([t, label]) => (
+        <div className="flex border-b border-gray-800 flex-shrink-0 overflow-x-auto">
+          {TABS.map(([t, label]) => (
             <button key={t} onClick={() => setTab(t)}
-              className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${tab === t ? 'text-white border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-300'}`}>
+              className={`flex-1 px-3 py-2.5 text-xs font-medium transition-colors whitespace-nowrap ${tab === t ? 'text-white border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-300'}`}>
               {label}
             </button>
           ))}
@@ -85,8 +171,7 @@ export default function ManagerDashboard() {
                   <div className="text-xs text-gray-500">평균 소요</div>
                 </div>
               </div>
-              {waiting > 3 && <div className="bg-amber-900/20 border border-amber-700/30 rounded-lg p-3 text-xs text-amber-300">⚠️ CEO 보고 대기 인원이 많습니다. 보고를 확인해주세요.</div>}
-              {avgDuration > 60 && <div className="bg-red-900/20 border border-red-700/30 rounded-lg p-3 text-xs text-red-300">⚠️ 평균 업무 소요시간이 깁니다. 업무 난이도를 확인해주세요.</div>}
+              {waiting > 3 && <div className="bg-amber-900/20 border border-amber-700/30 rounded-lg p-3 text-xs text-amber-300">보고 대기 인원이 많습니다.</div>}
             </div>
           )}
 
@@ -107,13 +192,142 @@ export default function ManagerDashboard() {
                       <div className="text-white text-sm font-medium">{w.name} <span className="text-gray-500 text-xs">{w.title}</span></div>
                       <div className="text-xs text-gray-500">{w.state === 'idle' ? '대기 중' : w.state}</div>
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      <div className="text-sm font-bold text-blue-400">{wLogs.length + wRecords.length}</div>
-                      <div className="text-xs text-gray-500">{wAvg > 0 ? `평균 ${wAvg}s` : '-'}</div>
+                    <div className="text-right flex-shrink-0 flex items-center gap-2">
+                      <div>
+                        <div className="text-sm font-bold text-blue-400">{wLogs.length + wRecords.length}</div>
+                        <div className="text-xs text-gray-500">{wAvg > 0 ? `평균 ${wAvg}s` : '-'}</div>
+                      </div>
+                      <button onClick={() => { setSelectedWorkerForTraining(w.id); setTab('training'); loadTrainingData(w.roleKey); }}
+                        className="text-[10px] px-2 py-1 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors">
+                        학습
+                      </button>
                     </div>
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {tab === 'training' && (
+            <div className="space-y-4">
+              <div>
+                <label className="text-gray-400 text-xs font-medium block mb-2">학습시킬 에이전트 선택</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {regularWorkers.map(w => (
+                    <button key={w.id}
+                      onClick={() => { setSelectedWorkerForTraining(w.id); loadTrainingData(w.roleKey); }}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        selectedWorkerForTraining === w.id ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                      }`}>
+                      {w.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {selectedWorkerForTraining && (() => {
+                const w = regularWorkers.find(v => v.id === selectedWorkerForTraining);
+                if (!w) return null;
+                return (
+                  <div className="space-y-3">
+                    <div className="flex gap-1.5">
+                      {(Object.entries(TRAINING_TYPES) as [string, { label: string; desc: string }][]).map(([key, { label }]) => (
+                        <button key={key} onClick={() => setTrainingType(key as typeof trainingType)}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                            trainingType === key ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                          }`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-gray-500 text-[11px]">{TRAINING_TYPES[trainingType].desc}</p>
+                    <textarea value={trainingContent} onChange={e => setTrainingContent(e.target.value)}
+                      placeholder={`${w.name}에게 전달할 ${TRAINING_TYPES[trainingType].label} 내용을 입력하세요...`}
+                      rows={3}
+                      className="w-full bg-gray-800 text-white text-xs rounded-xl px-4 py-3 border border-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500/50 resize-none" />
+                    <button onClick={saveTraining} disabled={!trainingContent.trim()}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 text-white rounded-xl text-xs font-medium transition-colors">
+                      학습 데이터 저장
+                    </button>
+
+                    <div className="border-t border-gray-800 pt-3">
+                      <h4 className="text-gray-400 text-xs font-medium mb-2">저장된 학습 데이터 ({trainingItems.length}건)</h4>
+                      {trainingLoading ? (
+                        <div className="text-gray-600 text-xs text-center py-4">로딩 중...</div>
+                      ) : trainingItems.length === 0 ? (
+                        <div className="text-gray-600 text-xs text-center py-4">아직 학습 데이터가 없습니다</div>
+                      ) : (
+                        <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                          {trainingItems.map(item => (
+                            <div key={item.id} className="bg-gray-800/50 rounded-lg p-2 flex items-start gap-2">
+                              <div className="flex-1 min-w-0">
+                                <span className="text-[10px] text-purple-400 font-medium">{TRAINING_TYPES[item.training_type]?.label ?? item.training_type}</span>
+                                <p className="text-gray-300 text-[11px] mt-0.5 line-clamp-2">{item.content}</p>
+                              </div>
+                              <button onClick={() => deleteTraining(item.id)}
+                                className="text-gray-600 hover:text-red-400 text-xs flex-shrink-0 transition-colors">x</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {tab === 'intervene' && (
+            <div className="space-y-4">
+              <p className="text-gray-400 text-xs">에이전트에게 직접 메시지를 보내거나 작업에 개입합니다.</p>
+              <div>
+                <label className="text-gray-400 text-xs font-medium block mb-2">대상 에이전트</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {regularWorkers.map(w => (
+                    <button key={w.id} onClick={() => setInterventionTarget(w.id)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                        interventionTarget === w.id ? 'bg-amber-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                      }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${w.state === 'working' ? 'bg-green-400' : w.state === 'idle' ? 'bg-gray-500' : 'bg-amber-400'}`} />
+                      {w.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {interventionTarget && (
+                <div className="space-y-2">
+                  <textarea value={interventionMsg} onChange={e => setInterventionMsg(e.target.value)}
+                    placeholder="에이전트에게 전달할 메시지..."
+                    rows={3}
+                    className="w-full bg-gray-800 text-white text-xs rounded-xl px-4 py-3 border border-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-500/50 resize-none" />
+                  <button onClick={sendIntervention} disabled={!interventionMsg.trim()}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-gray-700 text-white rounded-xl text-xs font-medium transition-colors">
+                    메시지 전송
+                  </button>
+                </div>
+              )}
+
+              <div className="border-t border-gray-800 pt-3">
+                <h4 className="text-gray-400 text-xs font-medium mb-2">현재 에이전트 상태</h4>
+                <div className="space-y-1.5">
+                  {regularWorkers.map(w => (
+                    <div key={w.id} className="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2">
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                        w.state === 'working' ? 'bg-green-400' : w.state === 'idle' ? 'bg-gray-500' : 'bg-amber-400'
+                      }`} />
+                      <span className="text-white text-xs font-medium">{w.name}</span>
+                      <span className="text-gray-500 text-[11px]">{w.title}</span>
+                      <span className="text-gray-600 text-[10px] ml-auto">
+                        {w.state === 'idle' ? '대기 중' : w.state === 'working' ? '작업 중' : w.state}
+                      </span>
+                      {w.streamingText && (
+                        <span className="text-green-400 text-[10px]">{w.streamingText.length}자 작성 중</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
@@ -126,7 +340,7 @@ export default function ManagerDashboard() {
                   <div key={log.id} className="bg-gray-800 rounded-lg p-3 space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="text-white text-xs font-medium">{log.workerName}</span>
-                      <span className="text-gray-500 text-xs">{new Date(log.timestamp).toLocaleString('ko-KR')}</span>
+                      <span className="text-gray-500 text-xs">{new Date(log.timestamp).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}</span>
                     </div>
                     <p className="text-gray-400 text-xs truncate">{log.taskInstruction}</p>
                     <p className="text-gray-500 text-xs">소요: {Math.round(log.durationMs / 1000)}초</p>
@@ -138,23 +352,20 @@ export default function ManagerDashboard() {
 
           {tab === 'export' && (
             <div className="space-y-4">
-              <p className="text-gray-400 text-sm">저장된 데이터를 내보냅니다. (세션 + localStorage)</p>
+              <p className="text-gray-400 text-sm">저장된 데이터를 내보냅니다.</p>
               <div className="grid grid-cols-2 gap-3">
                 <button onClick={() => downloadFile(getAllRecordsAsCSV(), `office_data_${Date.now()}.csv`, 'text/csv')}
                   className="bg-gray-800 hover:bg-gray-700 rounded-xl p-4 text-center transition-colors">
-                  <div className="text-2xl mb-1">📊</div>
+                  <div className="text-2xl mb-1">CSV</div>
                   <div className="text-white text-sm font-medium">CSV 내보내기</div>
                   <div className="text-gray-500 text-xs">{allRecords.length}건</div>
                 </button>
                 <button onClick={() => downloadFile(getAllRecordsAsJSON(), `office_data_${Date.now()}.json`, 'application/json')}
                   className="bg-gray-800 hover:bg-gray-700 rounded-xl p-4 text-center transition-colors">
-                  <div className="text-2xl mb-1">📋</div>
+                  <div className="text-2xl mb-1">JSON</div>
                   <div className="text-white text-sm font-medium">JSON 내보내기</div>
                   <div className="text-gray-500 text-xs">{allRecords.length}건</div>
                 </button>
-              </div>
-              <div className="bg-gray-800 rounded-xl p-3 text-xs text-gray-500">
-                세션 내 로그: {managerLogs.length}건 · localStorage 기록: {allRecords.length}건
               </div>
             </div>
           )}

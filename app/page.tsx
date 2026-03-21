@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useCallback, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import OfficeCanvas from '@/components/OfficeCanvas';
 import TaskAssignModal from '@/components/TaskAssignModal';
 import ReportModal from '@/components/ReportModal';
@@ -21,8 +22,9 @@ import CompetitorModal from '@/components/CompetitorModal';
 import TimelineReplay from '@/components/TimelineReplay';
 import { useOfficeStore } from '@/lib/store';
 import { ProjectTemplate, CompetitorInput } from '@/lib/types';
-import { loadProjectHistory } from '@/lib/storage';
+import { loadProjectHistory, initStorageFromSupabase } from '@/lib/storage';
 import { startOfficeLife, stopOfficeLife } from '@/lib/office-life';
+import { createClient } from '@/lib/supabase/client';
 
 export default function Home() {
   const workers = useOfficeStore(s => s.workers);
@@ -37,12 +39,26 @@ export default function Home() {
   const setChatOpen = useOfficeStore(s => s.setChatPanelOpen);
   const updateWorkerStreaming = useOfficeStore(s => s.updateWorkerStreaming);
   const [historyCount, setHistoryCount] = useState(0);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase.from('profiles').select('role').eq('id', user.id).single()
+        .then(({ data }) => { if (data?.role === 'admin') setIsAdmin(true); });
+    });
+  }, []);
 
   useEffect(() => {
     try { setHistoryCount(loadProjectHistory().length); } catch { /* noop */ }
   }, [project?.status]);
 
   useEffect(() => {
+    initStorageFromSupabase().then(() => {
+      try { setHistoryCount(loadProjectHistory().length); } catch { /* noop */ }
+    });
     startOfficeLife();
     return () => stopOfficeLife();
   }, []);
@@ -139,6 +155,12 @@ export default function Home() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800">
         <div className="flex items-center gap-3">
+          {isAdmin && (
+            <button onClick={() => router.push('/admin')}
+              className="text-xs bg-amber-500/20 text-amber-400 px-2 py-1 rounded-full font-bold hover:bg-amber-500/30 transition-colors">
+              관리자
+            </button>
+          )}
           <h1 className="text-white font-bold text-sm tracking-wide">VIRTUAL OFFICE</h1>
           <span className="text-gray-600 text-xs">AI Agent Simulation</span>
           {historyCount > 0 && (
@@ -187,6 +209,15 @@ export default function Home() {
           {projectQueue.length > 0 && (
             <span className="text-gray-500 text-xs" title="완료된 프로젝트">📁 {projectQueue.length}</span>
           )}
+          <button onClick={async () => {
+            const supabase = createClient();
+            await supabase.auth.signOut();
+            router.push('/login');
+            router.refresh();
+          }}
+            className="text-xs text-gray-500 hover:text-gray-300 px-2 py-1 transition-colors">
+            로그아웃
+          </button>
         </div>
       </div>
 

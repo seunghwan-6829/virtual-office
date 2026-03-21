@@ -173,6 +173,7 @@ export interface CEONote {
   category: 'process' | 'quality' | 'efficiency' | 'team' | 'general';
   timestamp: number;
   acknowledged: boolean;
+  feedback?: string;
 }
 
 export interface Project {
