@@ -35,6 +35,24 @@ interface TrainingRow {
 
 type Tab = 'overview' | 'conversations' | 'training' | 'tasks';
 
+const MSG_TRUNCATE = 80;
+
+function ExpandableText({ text, limit = MSG_TRUNCATE }: { text: string; limit?: number }) {
+  const [expanded, setExpanded] = useState(false);
+  if (text.length <= limit) return <p className="text-gray-300 text-xs leading-relaxed whitespace-pre-wrap">{text}</p>;
+  return (
+    <div>
+      <p className="text-gray-300 text-xs leading-relaxed whitespace-pre-wrap">
+        {expanded ? text : text.slice(0, limit) + '...'}
+      </p>
+      <button onClick={() => setExpanded(!expanded)}
+        className="text-violet-400 text-[10px] mt-0.5 hover:text-violet-300 transition-colors">
+        {expanded ? '접기' : '더보기'}
+      </button>
+    </div>
+  );
+}
+
 export default function DataStoragePanel() {
   const open = useOfficeStore(s => s.dataStorageOpen);
   const setOpen = useOfficeStore(s => s.setDataStorageOpen);
@@ -51,6 +69,12 @@ export default function DataStoragePanel() {
   const [totalTraining, setTotalTraining] = useState(0);
   const [totalTasks, setTotalTasks] = useState(0);
   const loadingRef = useRef(false);
+
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addTarget, setAddTarget] = useState('');
+  const [addType, setAddType] = useState<'instruction' | 'reference' | 'feedback'>('instruction');
+  const [addContent, setAddContent] = useState('');
+  const [addSaving, setAddSaving] = useState(false);
 
   const regularWorkers = workers.filter(w => !w.isManager && w.roleKey !== 'manager');
 
@@ -263,7 +287,7 @@ export default function DataStoragePanel() {
                     {new Date(c.created_at).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' })}
                   </span>
                 </div>
-                <p className="text-gray-300 text-xs leading-relaxed whitespace-pre-wrap">{c.message}</p>
+                <ExpandableText text={c.message} />
               </div>
             ))}
           </div>
@@ -271,7 +295,80 @@ export default function DataStoragePanel() {
 
         {!loading && tab === 'training' && (
           <div className="space-y-2">
-            {filteredTrainings.length === 0 && (
+            {/* Manual Training Input Button */}
+            {!showAddForm && (
+              <button onClick={() => { setShowAddForm(true); if (!addTarget && regularWorkers.length > 0) setAddTarget(regularWorkers[0].roleKey); }}
+                className="w-full py-2 rounded-lg bg-violet-600/20 text-violet-400 text-xs font-medium hover:bg-violet-600/30 transition-colors border border-violet-500/30">
+                + 수기 학습 데이터 추가
+              </button>
+            )}
+
+            {/* Manual Training Form */}
+            {showAddForm && (
+              <div className="bg-gray-800 rounded-xl p-3 space-y-2.5 border border-violet-500/30">
+                <div className="flex items-center justify-between">
+                  <span className="text-white text-xs font-bold">학습 데이터 직접 입력</span>
+                  <button onClick={() => { setShowAddForm(false); setAddContent(''); }}
+                    className="text-gray-500 hover:text-white text-xs">✕</button>
+                </div>
+
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="text-gray-500 text-[10px] mb-1 block">대상 에이전트</label>
+                    <select value={addTarget} onChange={e => setAddTarget(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white">
+                      {regularWorkers.map(w => (
+                        <option key={w.roleKey} value={w.roleKey}>{w.name} ({w.title})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-gray-500 text-[10px] mb-1 block">유형</label>
+                    <select value={addType} onChange={e => setAddType(e.target.value as 'instruction' | 'reference' | 'feedback')}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white">
+                      <option value="instruction">지시 (작업 방향 설정)</option>
+                      <option value="reference">참고 (참고 자료/팁)</option>
+                      <option value="feedback">피드백 (개선 사항)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-gray-500 text-[10px] mb-1 block">내용</label>
+                  <textarea value={addContent} onChange={e => setAddContent(e.target.value)}
+                    placeholder="이 에이전트에게 학습시킬 내용을 입력하세요..."
+                    rows={4}
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-2 text-xs text-white placeholder-gray-600 resize-none" />
+                </div>
+
+                <button onClick={async () => {
+                  if (!addContent.trim() || !addTarget) return;
+                  setAddSaving(true);
+                  try {
+                    const supabase = createClient();
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (user) {
+                      await supabase.from('agent_training').insert({
+                        user_id: user.id,
+                        role_key: addTarget,
+                        training_type: addType,
+                        content: `[수기 입력]\n${addContent.trim()}`,
+                      });
+                      setAddContent('');
+                      setShowAddForm(false);
+                      setLoaded(false);
+                    }
+                  } catch { /* noop */ }
+                  setAddSaving(false);
+                }}
+                  disabled={addSaving || !addContent.trim()}
+                  className="w-full py-2 rounded-lg bg-violet-600 text-white text-xs font-medium hover:bg-violet-500 transition-colors disabled:opacity-40">
+                  {addSaving ? '저장 중...' : '저장'}
+                </button>
+              </div>
+            )}
+
+            {filteredTrainings.length === 0 && !showAddForm && (
               <div className="text-gray-600 text-xs text-center py-8">학습 데이터가 없습니다</div>
             )}
             {filteredTrainings.map(t => {
@@ -295,7 +392,7 @@ export default function DataStoragePanel() {
                       {new Date(t.created_at).toLocaleString('ko-KR', { month: 'short', day: 'numeric', timeZone: 'Asia/Seoul' })}
                     </span>
                   </div>
-                  <p className="text-gray-300 text-xs leading-relaxed">{t.content}</p>
+                  <ExpandableText text={t.content} />
                 </div>
               );
             })}
