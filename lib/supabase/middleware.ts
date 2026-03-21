@@ -30,10 +30,12 @@ export async function updateSession(request: NextRequest) {
 
   const publicPaths = ['/login', '/signup', '/pending'];
   const isPublic = publicPaths.some(p => pathname.startsWith(p));
+  const isAuthApi = pathname.startsWith('/api/auth');
   const isApi = pathname.startsWith('/api');
   const isStatic = pathname.startsWith('/_next') || pathname.startsWith('/sprites') || pathname.includes('.');
 
   if (isStatic) return supabaseResponse;
+  if (isAuthApi) return supabaseResponse;
 
   if (!user) {
     if (isPublic) return supabaseResponse;
@@ -41,11 +43,8 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // Use service role to bypass RLS for profile status check
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceKey) {
-    // Fallback: allow through if service key not available
-    if (isPublic) return supabaseResponse;
     return supabaseResponse;
   }
 

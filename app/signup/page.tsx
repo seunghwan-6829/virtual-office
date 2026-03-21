@@ -31,14 +31,22 @@ export default function SignupPage() {
     }
 
     if (data.user) {
-      const isAdmin = email.toLowerCase() === 'motiol_6829@naver.com';
-      await supabase.from('profiles').upsert({
-        id: data.user.id,
-        email,
-        display_name: displayName,
-        role: isAdmin ? 'admin' : 'user',
-        status: isAdmin ? 'active' : 'pending',
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: data.user.id,
+          email,
+          displayName,
+        }),
       });
+
+      const result = await res.json();
+      if (result.isAdmin) {
+        router.push('/');
+        router.refresh();
+        return;
+      }
     }
 
     router.push('/pending');

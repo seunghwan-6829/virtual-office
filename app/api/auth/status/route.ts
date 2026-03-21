@@ -21,9 +21,8 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ status: 'unauthenticated' });
 
-  // Use service role to bypass RLS
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!serviceKey) return NextResponse.json({ status: 'error' });
+  if (!serviceKey) return NextResponse.json({ status: 'error', msg: 'no service key' });
 
   const admin = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,12 +30,30 @@ export async function GET() {
     { cookies: { getAll() { return []; }, setAll() {} } },
   );
 
-  const { data: profile } = await admin
+  let { data: profile } = await admin
     .from('profiles')
     .select('status, role')
     .eq('id', user.id)
     .single();
 
-  if (!profile) return NextResponse.json({ status: 'no_profile' });
+  if (!profile) {
+    const isAdmin = (user.email ?? '').toLowerCase() === 'motiol_6829@naver.com';
+    await admin.from('profiles').upsert({
+      id: user.id,
+      email: user.email ?? '',
+      display_name: user.user_metadata?.display_name ?? '',
+      role: isAdmin ? 'admin' : 'user',
+      status: isAdmin ? 'active' : 'pending',
+    });
+
+    const { data: newProfile } = await admin
+      .from('profiles')
+      .select('status, role')
+      .eq('id', user.id)
+      .single();
+    profile = newProfile;
+  }
+
+  if (!profile) return NextResponse.json({ status: 'error', msg: 'profile creation failed' });
   return NextResponse.json({ status: profile.status, role: profile.role });
 }
