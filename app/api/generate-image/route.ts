@@ -83,7 +83,15 @@ export async function POST(req: NextRequest) {
 
     const userPrompt = prompt || '이 상품의 고퀄리티 제품 이미지를 생성해주세요.';
     const textSuffix = textPreserve ? '\n\n[중요] 상품에 적힌 모든 글자, 숫자, 브랜드 로고를 원본과 동일하게 정확히 재현해주세요. 글자가 왜곡되거나 빠지면 안 됩니다.' : '';
-    parts.push({ text: `\n\n사용자 요청: ${userPrompt}${textSuffix}` });
+
+    const lightingGuide = `\n\n[조명·환경광 반영 필수 지침]
+- 제품은 배경 환경 속에 실제로 놓여 있어야 합니다. 배경의 조명 색온도, 방향, 강도에 맞춰 제품 표면에도 동일한 빛이 자연스럽게 반영되어야 합니다.
+- 예: 따뜻한 붉은 조명 환경이면 제품 표면에도 미세한 붉은 반사광/색조가 묻어나야 합니다. 차가운 푸른 환경이면 제품에도 푸른 반사가 있어야 합니다.
+- 제품에 광원 방향에 맞는 하이라이트와 그림자가 있어야 합니다. 제품이 플랫(flat)하게 오려붙인 듯 보이면 안 됩니다.
+- 반사 표면(테이블, 바닥 등)이 있으면 제품의 은은한 반사도 표현하세요.
+- 단, 제품의 원래 형태·디자인·패키지 구조는 절대 변형하지 마세요. 조명에 의한 색조 변화만 자연스럽게 적용하세요.`;
+
+    parts.push({ text: `\n\n사용자 요청: ${userPrompt}${textSuffix}${lightingGuide}` });
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
 
