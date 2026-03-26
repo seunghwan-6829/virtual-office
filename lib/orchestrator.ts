@@ -227,7 +227,7 @@ async function runPhase(phase: WorkPhase, allPhases: WorkPhase[], input: Project
   const result = await callLLMStreaming(fullInstruction, worker, (streaming) => {
     useOfficeStore.getState().updatePhaseStreaming(phase.id, streaming);
     useOfficeStore.getState().updateWorkerStreaming(worker.id, streaming);
-  });
+  }, 8192);
 
   useOfficeStore.getState().completePhase(phase.id, result);
   useOfficeStore.getState().setWorkerState(worker.id, 'idle');
@@ -251,7 +251,7 @@ async function runPhase(phase: WorkPhase, allPhases: WorkPhase[], input: Project
     const revisionInstruction = `${fullInstruction}\n\n[이전 결과]\n${result}\n\n[CEO 수정 지시]\n${intervention.feedback}\n\n위 수정 지시를 반영하여 전체 결과를 다시 작성하세요.`;
     const revised = await callLLMStreaming(revisionInstruction, worker, (streaming) => {
       useOfficeStore.getState().updatePhaseStreaming(phase.id, streaming);
-    });
+    }, 8192);
 
     useOfficeStore.getState().completePhase(phase.id, revised);
     useOfficeStore.getState().setWorkerState(worker.id, 'idle');
@@ -562,7 +562,7 @@ export async function regenerateSection(phaseId: string, sectionFeedback: string
 
   const result = await callLLMStreaming(instruction, worker, (streaming) => {
     useOfficeStore.getState().updatePhaseStreaming(phaseId, streaming);
-  });
+  }, 8192);
 
   useOfficeStore.getState().completePhase(phaseId, result);
   useOfficeStore.getState().setWorkerState(worker.id, 'idle');
@@ -598,7 +598,7 @@ ${input.notes ? `메모: ${input.notes}` : ''}
     name: mgr?.name ?? '윤성현',
     title: '경쟁사 분석',
     provider: mgr?.provider ?? 'anthropic',
-  });
+  }, undefined, 8192);
 }
 
 export async function autoOptimizeAgent(workerId: string): Promise<string> {

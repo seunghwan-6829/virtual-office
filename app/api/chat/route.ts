@@ -26,7 +26,7 @@ export async function POST(req: Request) {
       model: llmModel,
       system: systemPrompt,
       prompt,
-      ...(maxTokens ? { maxTokens: Number(maxTokens) } : {}),
+      maxTokens: Number(maxTokens) || 8192,
     });
 
     return result.toTextStreamResponse();

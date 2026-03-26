@@ -86,6 +86,7 @@ export default function Home() {
           provider: worker.provider,
           previousResult: isRevision ? task.result : undefined,
           revisionFeedback: isRevision ? lastRevision.feedback : undefined,
+          maxTokens: 8192,
         }),
       });
 
