@@ -554,23 +554,17 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
     setGenerating(false);
   };
 
-  /* ── 이미지 수정 (리파인) ── */
+  /* ── 이미지 수정 (리파인) — 같은 창에서 프리뷰 갱신 ── */
+  const [editHistory, setEditHistory] = useState<string[]>([]);
+  const [editError, setEditError] = useState('');
+
   const handleEditImage = async () => {
     if (!editTarget || !editPrompt.trim()) return;
     setEditLoading(true);
+    setEditError('');
 
-    const { batchId, imgIdx, base64: srcBase64 } = editTarget;
-
-    const refineBatchId = `refine_${Date.now()}`;
-    const refineBatch: ImageBatch = {
-      id: refineBatchId,
-      prompt: `✏️ 수정: ${editPrompt.trim()}`,
-      createdAt: Date.now(),
-      images: [{ base64: '', status: 'loading' }],
-    };
-    setBatches(prev => [refineBatch, ...prev]);
-
-    setEditTarget(null);
+    const srcBase64 = editTarget.base64;
+    const reqPrompt = editPrompt.trim();
     setEditPrompt('');
 
     try {
@@ -578,7 +572,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: editPrompt.trim(),
+          prompt: reqPrompt,
           aspectRatio,
           imageSize: resolution,
           model: selectedModel,
@@ -596,25 +590,33 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
 
       const data = await res.json();
       if (data.error) {
-        const st = data.isSafety ? 'violation' : 'error';
-        setBatches(prev => prev.map(b => b.id === refineBatchId
-          ? { ...b, images: [{ base64: '', status: st as 'violation' | 'error', errorMsg: data.error }] }
-          : b));
+        setEditError(data.error);
       } else if (data.images?.[0]) {
-        setBatches(prev => prev.map(b => b.id === refineBatchId
-          ? { ...b, images: [{ base64: data.images[0], status: 'done' }] }
-          : b));
+        const newBase64 = data.images[0];
+        setEditHistory(prev => [srcBase64, ...prev]);
+        setEditTarget(prev => prev ? { ...prev, base64: newBase64 } : null);
+
+        const refineBatch: ImageBatch = {
+          id: `refine_${Date.now()}`,
+          prompt: `✏️ ${reqPrompt}`,
+          createdAt: Date.now(),
+          images: [{ base64: newBase64, status: 'done' }],
+        };
+        setBatches(prev => [refineBatch, ...prev]);
       } else {
-        setBatches(prev => prev.map(b => b.id === refineBatchId
-          ? { ...b, images: [{ base64: '', status: 'error', errorMsg: '이미지가 반환되지 않았습니다.' }] }
-          : b));
+        setEditError('이미지가 반환되지 않았습니다.');
       }
     } catch (err) {
-      setBatches(prev => prev.map(b => b.id === refineBatchId
-        ? { ...b, images: [{ base64: '', status: 'error', errorMsg: err instanceof Error ? err.message : '네트워크 오류' }] }
-        : b));
+      setEditError(err instanceof Error ? err.message : '네트워크 오류');
     }
     setEditLoading(false);
+  };
+
+  const handleEditUndo = () => {
+    if (editHistory.length === 0) return;
+    const [prev, ...rest] = editHistory;
+    setEditHistory(rest);
+    setEditTarget(t => t ? { ...t, base64: prev } : null);
   };
 
   /* ── 다운로드 ── */
@@ -971,47 +973,104 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
       {/* 이미지 확대 뷰어 */}
       {zoomSrc && <ImageZoom src={zoomSrc} onClose={() => setZoomSrc(null)} />}
 
-      {/* 이미지 수정 프롬프트 */}
+      {/* 이미지 수정 (좌: 프리뷰 / 우: 입력) */}
       {editTarget && (
-        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/70" onClick={() => setEditTarget(null)}>
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="p-4 border-b border-gray-800 flex items-center gap-3">
-              <div className="w-16 h-16 rounded-lg overflow-hidden border border-violet-500/40 flex-shrink-0">
-                <img src={`data:image/png;base64,${editTarget.base64}`} alt="원본" className="w-full h-full object-cover" />
-              </div>
-              <div className="flex-1 min-w-0">
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/70" onClick={() => { setEditTarget(null); setEditHistory([]); setEditError(''); }}>
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-3xl mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* 헤더 */}
+            <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
+              <div>
                 <h4 className="text-white text-sm font-bold">이미지 수정</h4>
-                <p className="text-gray-500 text-[11px]">이 이미지를 기반으로 수정 요청을 보냅니다</p>
+                <p className="text-gray-500 text-[10px]">수정할 내용을 입력하면 이 화면에서 바로 결과를 확인할 수 있습니다</p>
               </div>
-              <button onClick={() => setEditTarget(null)} className="text-gray-500 hover:text-white transition-colors text-lg">✕</button>
-            </div>
-            <div className="p-4 space-y-3">
-              <textarea
-                value={editPrompt}
-                onChange={e => setEditPrompt(e.target.value)}
-                placeholder="수정할 내용을 입력하세요... (예: 배경을 흰색으로 변경, 밝기를 올려줘, 상품을 더 크게)"
-                rows={3}
-                autoFocus
-                className="w-full bg-gray-800 text-white text-xs rounded-xl px-4 py-3 border border-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-none placeholder-gray-600"
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && editPrompt.trim()) { e.preventDefault(); handleEditImage(); } }}
-              />
-              <div className="flex gap-2">
-                <button onClick={() => setEditTarget(null)}
-                  className="flex-1 py-2.5 bg-gray-800 text-gray-400 rounded-xl text-xs hover:bg-gray-700 transition-colors">
-                  취소
-                </button>
-                <button onClick={handleEditImage} disabled={!editPrompt.trim() || editLoading}
-                  className="flex-1 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white rounded-xl text-xs font-medium transition-all">
-                  {editLoading ? '수정 중...' : '✏️ 수정 요청'}
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {['배경을 흰색으로', '밝기를 올려줘', '상품을 더 크게', '그림자 추가', '분위기를 따뜻하게', '색감을 더 선명하게'].map(q => (
-                  <button key={q} onClick={() => setEditPrompt(prev => prev ? `${prev}, ${q}` : q)}
-                    className="px-2 py-1 bg-gray-800 text-gray-500 rounded-lg text-[10px] hover:bg-violet-600/20 hover:text-violet-400 transition-colors">
-                    {q}
+              <div className="flex items-center gap-2">
+                {editHistory.length > 0 && (
+                  <button onClick={handleEditUndo} className="text-[10px] text-gray-400 hover:text-white bg-gray-800 px-2.5 py-1.5 rounded-lg transition-colors">
+                    ↩ 되돌리기 ({editHistory.length})
                   </button>
-                ))}
+                )}
+                <button onClick={() => { setEditTarget(null); setEditHistory([]); setEditError(''); }} className="text-gray-500 hover:text-white transition-colors text-lg">✕</button>
+              </div>
+            </div>
+
+            <div className="flex" style={{ minHeight: 400 }}>
+              {/* 좌측: 이미지 프리뷰 */}
+              <div className="flex-1 flex items-center justify-center p-5 bg-gray-950/50 relative">
+                {editLoading && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50 rounded-bl-2xl">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="relative w-16 h-16">
+                        <div className="absolute inset-0 rounded-full border-2 border-violet-500/20" />
+                        <div className="absolute inset-0 rounded-full border-2 border-t-violet-500 animate-spin" />
+                        <div className="absolute inset-2 rounded-full border-2 border-t-purple-400 animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }} />
+                      </div>
+                      <span className="text-violet-300 text-xs animate-pulse">수정 중...</span>
+                    </div>
+                  </div>
+                )}
+                <img
+                  src={`data:image/png;base64,${editTarget.base64}`}
+                  alt="현재 이미지"
+                  className="max-w-full max-h-[380px] rounded-xl border border-gray-700 object-contain shadow-lg"
+                />
+                {/* 다운로드 */}
+                <button onClick={() => handleDownloadSingle(editTarget.base64, 0)}
+                  className="absolute bottom-7 right-7 w-8 h-8 bg-black/60 hover:bg-black/80 text-white rounded-full text-sm flex items-center justify-center transition-colors">⬇</button>
+              </div>
+
+              {/* 우측: 입력 패널 */}
+              <div className="w-[280px] flex-shrink-0 border-l border-gray-800 p-4 flex flex-col gap-3">
+                <div className="flex-1 flex flex-col gap-3">
+                  <div>
+                    <label className="text-gray-400 text-[10px] font-medium block mb-1.5">수정 요청</label>
+                    <textarea
+                      value={editPrompt}
+                      onChange={e => setEditPrompt(e.target.value)}
+                      placeholder="수정할 내용을 입력하세요..."
+                      rows={4}
+                      autoFocus
+                      className="w-full bg-gray-800 text-white text-xs rounded-xl px-3 py-2.5 border border-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-none placeholder-gray-600"
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && editPrompt.trim()) { e.preventDefault(); handleEditImage(); } }}
+                    />
+                  </div>
+
+                  {editError && (
+                    <div className="bg-red-900/20 border border-red-700/30 rounded-lg p-2 text-red-400 text-[10px]">{editError}</div>
+                  )}
+
+                  <div>
+                    <label className="text-gray-500 text-[10px] block mb-1.5">빠른 수정</label>
+                    <div className="flex flex-wrap gap-1">
+                      {['배경 흰색으로', '밝기 올리기', '상품 더 크게', '그림자 추가', '따뜻한 분위기', '색감 선명하게', '노이즈 제거', '각도 변경'].map(q => (
+                        <button key={q} onClick={() => setEditPrompt(prev => prev ? `${prev}, ${q}` : q)}
+                          className="px-2 py-1 bg-gray-800 text-gray-500 rounded-md text-[9px] hover:bg-violet-600/20 hover:text-violet-400 transition-colors">
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {editHistory.length > 0 && (
+                    <div>
+                      <label className="text-gray-500 text-[10px] block mb-1.5">수정 이력 ({editHistory.length}회)</label>
+                      <div className="flex gap-1 overflow-x-auto pb-1">
+                        {editHistory.map((h, i) => (
+                          <div key={i}
+                            onClick={() => { setEditTarget(t => t ? { ...t, base64: h } : null); setEditHistory(prev => prev.filter((_, j) => j !== i)); }}
+                            className="w-10 h-10 flex-shrink-0 rounded-md overflow-hidden border border-gray-700 hover:border-violet-500 cursor-pointer transition-colors"
+                            title={`${i + 1}번째 이전 버전`}>
+                            <img src={`data:image/png;base64,${h}`} alt="" className="w-full h-full object-cover" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button onClick={handleEditImage} disabled={!editPrompt.trim() || editLoading}
+                  className="w-full py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white rounded-xl text-xs font-medium transition-all">
+                  {editLoading ? '🔄 수정 중...' : '✏️ 수정 요청'}
+                </button>
               </div>
             </div>
           </div>
