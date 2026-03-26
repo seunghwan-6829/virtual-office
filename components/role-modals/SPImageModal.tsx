@@ -40,7 +40,6 @@ const CATEGORIES = [
 interface UploadedImage { dataUrl: string; base64: string }
 interface RefTemplate { id: string; category: string; images: { dataUrl: string; base64: string }[]; name?: string }
 interface GeneratedImage { base64: string; status: 'loading' | 'done' | 'violation' | 'error'; errorMsg?: string }
-interface HistoryItem { id: string; prompt: string; model: string; images: string[]; createdAt: number }
 
 function extractBase64(dataUrl: string) {
   const idx = dataUrl.indexOf(',');
@@ -367,10 +366,8 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [error, setError] = useState('');
 
-  /* ── 뷰어 / 히스토리 ── */
+  /* ── 뷰어 ── */
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
 
   /* ── 템플릿 로드/저장 (localStorage + Supabase) ── */
   const loadTemplates = useCallback(async () => {
@@ -434,35 +431,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
     });
   };
 
-  /* ── 히스토리 로드/저장 ── */
-  const loadHistory = useCallback(async () => {
-    try {
-      const sb = createClient();
-      const { data: { user } } = await sb.auth.getUser();
-      if (!user) return;
-      const { data } = await sb.from('image_gen_history').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20);
-      if (data) setHistory(data.map((r: Record<string, unknown>) => ({ id: r.id as string, prompt: r.prompt as string, model: r.model as string, images: (r.images as string[]) || [], createdAt: new Date(r.created_at as string).getTime() })));
-    } catch {
-      const saved = localStorage.getItem('sp_image_history');
-      if (saved) try { setHistory(JSON.parse(saved)); } catch { /* noop */ }
-    }
-  }, []);
-
-  const saveToHistory = async (prompt: string, model: string, images: string[]) => {
-    const item: HistoryItem = { id: `hist_${Date.now()}`, prompt, model, images, createdAt: Date.now() };
-    const next = [item, ...history].slice(0, 20);
-    setHistory(next);
-    localStorage.setItem('sp_image_history', JSON.stringify(next));
-    try {
-      const sb = createClient();
-      const { data: { user } } = await sb.auth.getUser();
-      if (user) {
-        await sb.from('image_gen_history').insert({ id: item.id, user_id: user.id, prompt, model, images, created_at: new Date().toISOString() });
-      }
-    } catch { /* noop */ }
-  };
-
-  useEffect(() => { loadTemplates(); loadHistory(); }, [loadTemplates, loadHistory]);
+  useEffect(() => { loadTemplates(); }, [loadTemplates]);
 
   /* ── 파일 업로드 핸들러 (자동 리사이즈) ── */
   const handleFileUpload = (
@@ -559,14 +528,6 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
 
     await Promise.all(promises);
     setGenerating(false);
-
-    setGeneratedImages(prev => {
-      const completed = prev.filter(i => i.status === 'done' && i.base64).map(i => i.base64);
-      if (completed.length > 0) {
-        saveToHistory(promptText, selectedModel, completed);
-      }
-      return prev;
-    });
   };
 
   /* ── 다운로드 ── */
@@ -811,38 +772,10 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
         <div className="flex-1 overflow-y-auto bg-gray-950/50 p-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs text-gray-400 font-medium">🖼️ 프리뷰</span>
-            <div className="flex gap-2">
-              {doneCount > 0 && (
-                <button onClick={handleDownloadZip} className="text-[10px] bg-green-600/20 text-green-400 px-2.5 py-1 rounded-lg hover:bg-green-600/30 transition-colors">📦 ZIP</button>
-              )}
-              <button onClick={() => setShowHistory(!showHistory)}
-                className={`text-[10px] px-2.5 py-1 rounded-lg transition-colors ${showHistory ? 'bg-violet-600/20 text-violet-400' : 'bg-gray-800 text-gray-500 hover:text-gray-300'}`}>
-                📋 히스토리
-              </button>
-            </div>
+            {doneCount > 0 && (
+              <button onClick={handleDownloadZip} className="text-[10px] bg-green-600/20 text-green-400 px-2.5 py-1 rounded-lg hover:bg-green-600/30 transition-colors">📦 ZIP</button>
+            )}
           </div>
-
-          {/* 히스토리 */}
-          {showHistory && (
-            <div className="mb-4 space-y-2">
-              <div className="text-[10px] text-gray-500 font-medium">최근 생성 기록</div>
-              {history.length === 0 && <p className="text-[10px] text-gray-600">기록이 없습니다.</p>}
-              {history.map(h => (
-                <div key={h.id} className="bg-gray-900/80 border border-gray-800 rounded-lg p-2 flex gap-2">
-                  <div className="flex gap-1 flex-shrink-0">
-                    {h.images.slice(0, 2).map((b64, i) => (
-                      <img key={i} src={`data:image/png;base64,${b64}`} alt="" className="w-10 h-10 rounded object-cover cursor-pointer"
-                        onClick={() => setZoomSrc(`data:image/png;base64,${b64}`)} />
-                    ))}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] text-gray-300 truncate">{h.prompt}</p>
-                    <p className="text-[9px] text-gray-600">{new Date(h.createdAt).toLocaleDateString('ko-KR')} · {h.images.length}장</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
 
           {/* 생성된 이미지 / 로딩 */}
           {generatedImages.length > 0 ? (
