@@ -361,6 +361,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
   const [imageCount, setImageCount] = useState(1);
   const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [textPreserve, setTextPreserve] = useState(false);
 
   /* ── 생성 결과 (배치 누적, 최신이 위) ── */
   const [generating, setGenerating] = useState(false);
@@ -528,6 +529,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
             productImagesBase64: productImages.map(p => p.base64),
             referenceImagesBase64: refList,
             extraImagesBase64: extraImages.map(e => e.base64),
+            textPreserve,
           }),
         });
         const contentType = res.headers.get('content-type') || '';
@@ -839,6 +841,25 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
                 ))}
               </div>
             </div>
+          </section>
+
+          {/* 텍스트/로고 보존 강화 */}
+          <section>
+            <button onClick={() => setTextPreserve(!textPreserve)}
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] transition-colors border ${
+                textPreserve
+                  ? 'bg-amber-600/15 border-amber-500/40 text-amber-300'
+                  : 'bg-gray-800/50 border-gray-700 text-gray-500 hover:text-gray-300'
+              }`}>
+              <span className={`w-4 h-4 rounded flex items-center justify-center text-[10px] flex-shrink-0 ${textPreserve ? 'bg-amber-500 text-black' : 'bg-gray-700'}`}>
+                {textPreserve ? '✓' : ''}
+              </span>
+              <span className="flex-1 text-left">텍스트/로고 보존 강화</span>
+              <span className="text-[9px] text-gray-600">{textPreserve ? 'ON' : 'OFF'}</span>
+            </button>
+            {textPreserve && (
+              <p className="text-[9px] text-amber-500/60 mt-1 px-1">상품의 글자·로고·숫자를 최대한 정확하게 보존합니다 (생성 속도가 약간 느려질 수 있음)</p>
+            )}
           </section>
 
           {/* 모델 선택 + 생성 버튼 */}

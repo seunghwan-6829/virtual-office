@@ -11,6 +11,7 @@ export async function POST(req: NextRequest) {
       productImagesBase64,
       referenceImagesBase64,
       extraImagesBase64,
+      textPreserve,
     } = await req.json();
 
     const apiKey = process.env.GOOGLE_IMAGEN_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
@@ -30,15 +31,40 @@ export async function POST(req: NextRequest) {
     const refImages: string[] = (referenceImagesBase64 || []).filter(Boolean);
     const extras: string[] = (extraImagesBase64 || []).filter(Boolean);
 
+    if (textPreserve && allProductImages.length > 0) {
+      parts.push({ text: `[⚠️ 텍스트/로고 보존 최우선 모드]\n` +
+        `아래 상품에 인쇄된 모든 텍스트(브랜드명, 제품명, 숫자, 용량, 슬로건 등)와 로고를 **한 글자도 빠짐없이, 정확한 철자·폰트·크기·색상·위치로** 재현하세요.\n` +
+        `- 텍스트가 왜곡되거나 글자가 바뀌거나 누락되면 안 됩니다.\n` +
+        `- 로고의 형태, 색상, 비율을 원본 그대로 유지하세요.\n` +
+        `- 패키지 디자인의 레이아웃(텍스트 배치, 색상 영역 구분)을 충실히 따르세요.\n` +
+        `- 상품 표면의 텍스트를 확대하여 면밀히 관찰한 후 생성하세요.\n\n` });
+    }
+
     if (allProductImages.length > 1) {
-      parts.push({ text: `아래 ${allProductImages.length}장의 상품 이미지는 모두 동일한 제품을 다양한 각도에서 촬영한 것입니다. 이 이미지들을 종합적으로 분석하여 제품의 형태, 색상, 질감, 로고, 디자인 디테일을 완전히 파악한 후, 그 제품을 정확하게 반영한 새로운 이미지를 생성하세요.\n\n` });
+      const baseDesc = textPreserve
+        ? `아래 ${allProductImages.length}장의 상품 이미지는 모두 동일한 제품입니다. 각 이미지의 텍스트, 로고, 숫자를 하나하나 정밀하게 읽고, 제품의 형태·색상·질감·디자인 디테일과 함께 **모든 인쇄 텍스트를 정확히** 반영한 새로운 이미지를 생성하세요.\n\n`
+        : `아래 ${allProductImages.length}장의 상품 이미지는 모두 동일한 제품을 다양한 각도에서 촬영한 것입니다. 이 이미지들을 종합적으로 분석하여 제품의 형태, 색상, 질감, 로고, 디자인 디테일을 완전히 파악한 후, 그 제품을 정확하게 반영한 새로운 이미지를 생성하세요.\n\n`;
+      parts.push({ text: baseDesc });
       for (let i = 0; i < allProductImages.length; i++) {
         parts.push({ text: `[상품 이미지 ${i + 1}/${allProductImages.length}]:` });
         parts.push({ inlineData: { mimeType: 'image/jpeg', data: allProductImages[i] } });
       }
+
+      if (textPreserve) {
+        parts.push({ text: `\n[텍스트 확대 분석용 - 위 상품의 텍스트/로고 영역을 다시 한번 면밀히 확인하세요]:` });
+        parts.push({ inlineData: { mimeType: 'image/jpeg', data: allProductImages[0] } });
+      }
     } else if (allProductImages.length === 1) {
-      parts.push({ text: '[상품 이미지 - 이 제품의 외형을 정확히 반영하세요]:' });
+      const label = textPreserve
+        ? '[상품 이미지 - 이 제품의 외형과 **모든 인쇄된 텍스트·로고·숫자**를 정확히 반영하세요]:'
+        : '[상품 이미지 - 이 제품의 외형을 정확히 반영하세요]:';
+      parts.push({ text: label });
       parts.push({ inlineData: { mimeType: 'image/jpeg', data: allProductImages[0] } });
+
+      if (textPreserve) {
+        parts.push({ text: `\n[텍스트 확대 분석용 - 위 상품의 텍스트/로고를 다시 한번 면밀히 확인하세요]:` });
+        parts.push({ inlineData: { mimeType: 'image/jpeg', data: allProductImages[0] } });
+      }
     }
 
     if (refImages.length > 0) {
@@ -55,7 +81,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    parts.push({ text: `\n\n사용자 요청: ${prompt || '이 상품의 고퀄리티 제품 이미지를 생성해주세요.'}` });
+    const userPrompt = prompt || '이 상품의 고퀄리티 제품 이미지를 생성해주세요.';
+    const textSuffix = textPreserve ? '\n\n[중요] 상품에 적힌 모든 글자, 숫자, 브랜드 로고를 원본과 동일하게 정확히 재현해주세요. 글자가 왜곡되거나 빠지면 안 됩니다.' : '';
+    parts.push({ text: `\n\n사용자 요청: ${userPrompt}${textSuffix}` });
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
 
