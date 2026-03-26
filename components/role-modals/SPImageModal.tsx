@@ -993,9 +993,9 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
               </div>
             </div>
 
-            <div className="flex" style={{ minHeight: 520 }}>
+            <div className="flex" style={{ minHeight: 480 }}>
               {/* 좌측: 이미지 프리뷰 */}
-              <div className="flex-1 flex items-center justify-center p-5 bg-gray-950/50 relative">
+              <div className="flex-1 flex items-center justify-center p-6 bg-gray-950/50 relative">
                 {editLoading && (
                   <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50 rounded-bl-2xl">
                     <div className="flex flex-col items-center gap-3">
@@ -1011,7 +1011,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
                 <img
                   src={`data:image/png;base64,${editTarget.base64}`}
                   alt="현재 이미지"
-                  className="max-w-full max-h-[480px] rounded-xl border border-gray-700 object-contain shadow-lg"
+                  className="max-w-full max-h-[460px] rounded-xl border border-gray-700 object-contain shadow-lg"
                 />
                 {/* 다운로드 */}
                 <button onClick={() => handleDownloadSingle(editTarget.base64, 0)}
