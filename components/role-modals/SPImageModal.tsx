@@ -976,7 +976,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
       {/* 이미지 수정 (좌: 프리뷰 / 우: 입력) */}
       {editTarget && (
         <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/70" onClick={() => { setEditTarget(null); setEditHistory([]); setEditError(''); }}>
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-3xl mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-5xl mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
             {/* 헤더 */}
             <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
               <div>
@@ -993,7 +993,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
               </div>
             </div>
 
-            <div className="flex" style={{ minHeight: 400 }}>
+            <div className="flex" style={{ minHeight: 520 }}>
               {/* 좌측: 이미지 프리뷰 */}
               <div className="flex-1 flex items-center justify-center p-5 bg-gray-950/50 relative">
                 {editLoading && (
@@ -1011,7 +1011,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
                 <img
                   src={`data:image/png;base64,${editTarget.base64}`}
                   alt="현재 이미지"
-                  className="max-w-full max-h-[380px] rounded-xl border border-gray-700 object-contain shadow-lg"
+                  className="max-w-full max-h-[480px] rounded-xl border border-gray-700 object-contain shadow-lg"
                 />
                 {/* 다운로드 */}
                 <button onClick={() => handleDownloadSingle(editTarget.base64, 0)}
@@ -1019,7 +1019,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
               </div>
 
               {/* 우측: 입력 패널 */}
-              <div className="w-[280px] flex-shrink-0 border-l border-gray-800 p-4 flex flex-col gap-3">
+              <div className="w-[320px] flex-shrink-0 border-l border-gray-800 p-5 flex flex-col gap-3">
                 <div className="flex-1 flex flex-col gap-3">
                   <div>
                     <label className="text-gray-400 text-[10px] font-medium block mb-1.5">수정 요청</label>
