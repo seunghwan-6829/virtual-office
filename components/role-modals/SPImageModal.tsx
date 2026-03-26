@@ -440,18 +440,27 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
     setter: React.Dispatch<React.SetStateAction<UploadedImage[]>>,
     maxCount: number,
     currentCount: number,
+    autoSelect?: boolean,
   ) => {
     const files = Array.from(e.target.files || []);
     const remaining = maxCount - currentCount;
     if (remaining <= 0) return;
+    let addedCount = 0;
     files.slice(0, remaining).forEach(file => {
       const reader = new FileReader();
       reader.onload = async () => {
         const raw = reader.result as string;
         const resized = await resizeImage(raw, 1024);
-        setter(prev => [...prev, resized]);
+        setter(prev => {
+          const newIdx = prev.length;
+          if (autoSelect) {
+            setSelectedRefs(s => new Set(s).add(newIdx));
+          }
+          return [...prev, resized];
+        });
       };
       reader.readAsDataURL(file);
+      addedCount++;
     });
     e.target.value = '';
   };
@@ -647,7 +656,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
               </div>
             </div>
             <input ref={refInputRef} type="file" accept="image/*" multiple className="hidden"
-              onChange={e => handleFileUpload(e, setReferences, 14, references.length)} />
+              onChange={e => handleFileUpload(e, setReferences, 14, references.length, true)} />
 
             {references.length === 0 ? (
               <button onClick={() => refInputRef.current?.click()}
