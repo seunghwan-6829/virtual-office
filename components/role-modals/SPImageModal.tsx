@@ -140,7 +140,13 @@ function TemplateManager({
   };
 
   const handleCreate = () => {
-    if (newImages.length > 0) { onSave(newCat, newImages); setNewImages([]); setTab('list'); }
+    if (newImages.length > 0) {
+      for (const img of newImages) {
+        onSave(newCat, [img]);
+      }
+      setNewImages([]);
+      setTab('list');
+    }
   };
 
   const confirmDelete = (id: string) => { setConfirmDeleteId(id); };
