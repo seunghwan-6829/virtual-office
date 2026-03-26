@@ -35,6 +35,31 @@ function extractBase64(dataUrl: string) {
   return idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl;
 }
 
+function resizeImage(dataUrl: string, maxDim = 1024): Promise<{ dataUrl: string; base64: string }> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width <= maxDim && height <= maxDim) {
+        resolve({ dataUrl, base64: extractBase64(dataUrl) });
+        return;
+      }
+      const ratio = Math.min(maxDim / width, maxDim / height);
+      width = Math.round(width * ratio);
+      height = Math.round(height * ratio);
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, width, height);
+      const resized = canvas.toDataURL('image/jpeg', 0.85);
+      resolve({ dataUrl: resized, base64: extractBase64(resized) });
+    };
+    img.onerror = () => resolve({ dataUrl, base64: extractBase64(dataUrl) });
+    img.src = dataUrl;
+  });
+}
+
 /* ── 이미지 확대 뷰어 ──────────────────────── */
 function ImageZoom({ src, onClose }: { src: string; onClose: () => void }) {
   return (
@@ -71,9 +96,9 @@ function TemplateManager({
     const files = Array.from(e.target.files || []);
     files.forEach(file => {
       const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        setNewImages(prev => [...prev, { dataUrl, base64: extractBase64(dataUrl) }]);
+      reader.onload = async () => {
+        const resized = await resizeImage(reader.result as string, 1024);
+        setNewImages(prev => [...prev, resized]);
       };
       reader.readAsDataURL(file);
     });
@@ -84,9 +109,9 @@ function TemplateManager({
     const files = Array.from(e.target.files || []);
     files.forEach(file => {
       const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        setEditImages(prev => [...prev, { dataUrl, base64: extractBase64(dataUrl) }]);
+      reader.onload = async () => {
+        const resized = await resizeImage(reader.result as string, 1024);
+        setEditImages(prev => [...prev, resized]);
       };
       reader.readAsDataURL(file);
     });
@@ -365,7 +390,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
 
   useEffect(() => { loadTemplates(); loadHistory(); }, [loadTemplates, loadHistory]);
 
-  /* ── 파일 업로드 핸들러 ── */
+  /* ── 파일 업로드 핸들러 (자동 리사이즈) ── */
   const handleFileUpload = (
     e: React.ChangeEvent<HTMLInputElement>,
     setter: React.Dispatch<React.SetStateAction<UploadedImage[]>>,
@@ -377,9 +402,10 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
     if (remaining <= 0) return;
     files.slice(0, remaining).forEach(file => {
       const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        setter(prev => [...prev, { dataUrl, base64: extractBase64(dataUrl) }]);
+      reader.onload = async () => {
+        const raw = reader.result as string;
+        const resized = await resizeImage(raw, 1024);
+        setter(prev => [...prev, resized]);
       };
       reader.readAsDataURL(file);
     });
@@ -437,6 +463,11 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
             extraImagesBase64: extraImages.map(e => e.base64),
           }),
         });
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          const text = await res.text();
+          throw new Error(text.slice(0, 100) || `HTTP ${res.status}`);
+        }
         const data = await res.json();
         if (data.error) {
           const st = data.isSafety ? 'violation' : 'error';
