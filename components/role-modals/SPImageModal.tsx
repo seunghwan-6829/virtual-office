@@ -152,7 +152,7 @@ function TemplateManager({
 
   return (
     <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[88vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="px-5 py-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
           <h3 className="text-white font-bold text-sm">🖼️ 레퍼런스 템플릿</h3>
@@ -206,7 +206,7 @@ function TemplateManager({
                   <button onClick={() => setTab('create')} className="text-[11px] text-violet-400 hover:text-violet-300">+ 새 템플릿 만들기</button>
                 </div>
               ) : (
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-4 gap-3">
                   {filtered.map(t => {
                     const selected = selectedIds.has(t.id);
                     const isEditing = editingId === t.id;
