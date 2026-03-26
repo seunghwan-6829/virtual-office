@@ -1,6 +1,6 @@
-export const runtime = 'edge';
+import { NextRequest, NextResponse } from 'next/server';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const {
       prompt,
@@ -12,32 +12,32 @@ export async function POST(req: Request) {
 
     const apiKey = process.env.GOOGLE_IMAGEN_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) {
-      return Response.json({ error: 'Google API key not configured' }, { status: 500 });
+      return NextResponse.json({ error: 'Google API key가 설정되지 않았습니다. Vercel 환경변수를 확인하세요.' }, { status: 500 });
     }
 
     const parts: Record<string, unknown>[] = [];
 
-    parts.push({ text: prompt });
+    parts.push({ text: prompt || '이 상품의 고퀄리티 제품 이미지를 생성해주세요.' });
 
     if (productImageBase64) {
-      parts.push({ text: '\n[상품 이미지 - 이 제품의 외형을 정확히 참고하세요]:' });
       parts.push({
         inlineData: {
-          mimeType: 'image/jpeg',
+          mimeType: 'image/png',
           data: productImageBase64,
         },
       });
     }
 
     if (referenceImagesBase64 && referenceImagesBase64.length > 0) {
-      parts.push({ text: '\n[레퍼런스 이미지 - 이 스타일/구도/분위기를 참고하세요]:' });
       for (const refB64 of referenceImagesBase64) {
-        parts.push({
-          inlineData: {
-            mimeType: 'image/jpeg',
-            data: refB64,
-          },
-        });
+        if (refB64) {
+          parts.push({
+            inlineData: {
+              mimeType: 'image/png',
+              data: refB64,
+            },
+          });
+        }
       }
     }
 
@@ -63,7 +63,13 @@ export async function POST(req: Request) {
 
     if (!res.ok) {
       const errText = await res.text();
-      return Response.json({ error: `API error: ${res.status} - ${errText}` }, { status: res.status });
+      console.error('[generate-image] API error:', res.status, errText);
+      let friendlyMsg = `Google API 오류 (${res.status})`;
+      try {
+        const errJson = JSON.parse(errText);
+        friendlyMsg = errJson?.error?.message || friendlyMsg;
+      } catch { /* use default */ }
+      return NextResponse.json({ error: friendlyMsg }, { status: res.status });
     }
 
     const data = await res.json();
@@ -82,16 +88,21 @@ export async function POST(req: Request) {
     }
 
     if (images.length === 0 && !textResponse) {
-      return Response.json({ error: '이미지가 생성되지 않았습니다. 프롬프트를 수정해보세요.' }, { status: 400 });
+      const blockReason = candidate?.finishReason || data.candidates?.[0]?.finishReason;
+      const safetyMsg = blockReason === 'SAFETY' ? ' (안전 필터에 의해 차단됨)' : '';
+      return NextResponse.json({
+        error: `이미지가 생성되지 않았습니다${safetyMsg}. 프롬프트를 수정해보세요.`,
+      }, { status: 400 });
     }
 
-    return Response.json({
+    return NextResponse.json({
       images,
       count: images.length,
       text: textResponse || undefined,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return Response.json({ error: message }, { status: 500 });
+    console.error('[generate-image] Error:', message);
+    return NextResponse.json({ error: `서버 오류: ${message}` }, { status: 500 });
   }
 }

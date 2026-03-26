@@ -118,8 +118,8 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
       } else {
         setError('이미지가 생성되지 않았습니다. 프롬프트를 수정해보세요.');
       }
-    } catch {
-      setError('이미지 생성 중 오류가 발생했습니다.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '이미지 생성 중 오류가 발생했습니다.');
     }
     setGenerating(false);
   };
