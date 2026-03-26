@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useOfficeStore } from '@/lib/store';
 import { getCharColor } from '@/lib/types';
-import { createClient } from '@/lib/supabase/client';
 
 interface AgentStats {
   roleKey: string;
@@ -87,25 +86,16 @@ export default function DataStoragePanel() {
 
     (async () => {
       try {
-        const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) { setLoading(false); loadingRef.current = false; return; }
+        const res = await fetch('/api/data-storage');
+        if (!res.ok) { setLoading(false); loadingRef.current = false; return; }
+        const json = await res.json();
 
-        const [msgRes, trainRes, taskRes] = await Promise.all([
-          supabase.from('office_messages').select('id, from_id, from_name, to_id, to_name, message, type, created_at', { count: 'exact' })
-            .eq('user_id', user.id).order('created_at', { ascending: false }).limit(200),
-          supabase.from('agent_training').select('*', { count: 'exact' })
-            .eq('user_id', user.id).order('created_at', { ascending: false }).limit(100),
-          supabase.from('task_records').select('id, worker_id, worker_name', { count: 'exact' })
-            .eq('user_id', user.id),
-        ]);
+        setTotalMsgs(json.messageCount ?? 0);
+        setTotalTraining(json.trainingCount ?? 0);
+        setTotalTasks(json.taskCount ?? 0);
 
-        setTotalMsgs(msgRes.count ?? 0);
-        setTotalTraining(trainRes.count ?? 0);
-        setTotalTasks(taskRes.count ?? 0);
-
-        setConversations((msgRes.data ?? []) as ConversationRow[]);
-        setTrainings((trainRes.data ?? []) as TrainingRow[]);
+        setConversations((json.messages ?? []) as ConversationRow[]);
+        setTrainings((json.trainings ?? []) as TrainingRow[]);
 
         const agentMap = new Map<string, AgentStats>();
         for (const w of rw) {
@@ -115,19 +105,19 @@ export default function DataStoragePanel() {
           });
         }
 
-        for (const m of (msgRes.data ?? [])) {
+        for (const m of (json.messages ?? [])) {
           const a = agentMap.get(m.from_id);
           if (a) a.messageCount++;
           const b = agentMap.get(m.to_id);
           if (b) b.messageCount++;
         }
 
-        for (const t of (trainRes.data ?? [])) {
+        for (const t of (json.trainings ?? [])) {
           const w = rw.find(v => v.roleKey === t.role_key);
           if (w) { const a = agentMap.get(w.id); if (a) a.trainingCount++; }
         }
 
-        for (const t of (taskRes.data ?? [])) {
+        for (const t of (json.tasks ?? [])) {
           const a = agentMap.get(t.worker_id);
           if (a) a.taskCount++;
         }
@@ -345,15 +335,16 @@ export default function DataStoragePanel() {
                   if (!addContent.trim() || !addTarget) return;
                   setAddSaving(true);
                   try {
-                    const supabase = createClient();
-                    const { data: { user } } = await supabase.auth.getUser();
-                    if (user) {
-                      await supabase.from('agent_training').insert({
-                        user_id: user.id,
+                    const res = await fetch('/api/training', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
                         role_key: addTarget,
                         training_type: addType,
                         content: `[수기 입력]\n${addContent.trim()}`,
-                      });
+                      }),
+                    });
+                    if (res.ok) {
                       setAddContent('');
                       setShowAddForm(false);
                       setLoaded(false);

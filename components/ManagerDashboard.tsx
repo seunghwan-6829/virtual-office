@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useOfficeStore } from '@/lib/store';
 import { getCharColor } from '@/lib/types';
 import { loadTaskRecords, getAllRecordsAsCSV, getAllRecordsAsJSON } from '@/lib/storage';
-import { createClient } from '@/lib/supabase/client';
 
 type Tab = 'overview' | 'workers' | 'training' | 'intervene' | 'history' | 'export';
 
@@ -51,17 +50,19 @@ export default function ManagerDashboard() {
 
   const loadTrainingData = async (roleKey: string) => {
     setTrainingLoading(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setTrainingLoading(false); return; }
-    const { data } = await supabase
-      .from('agent_training')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('role_key', roleKey)
-      .order('created_at', { ascending: false })
-      .limit(20);
-    setTrainingItems(data ?? []);
+    try {
+      const res = await fetch(`/api/training?role_key=${encodeURIComponent(roleKey)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setTrainingItems(Array.isArray(data) ? data : []);
+      } else {
+        console.warn('Training load failed:', await res.text());
+        setTrainingItems([]);
+      }
+    } catch (err) {
+      console.warn('Training load error:', err);
+      setTrainingItems([]);
+    }
     setTrainingLoading(false);
   };
 
@@ -69,22 +70,30 @@ export default function ManagerDashboard() {
     if (!selectedWorkerForTraining || !trainingContent.trim()) return;
     const w = regularWorkers.find(v => v.id === selectedWorkerForTraining);
     if (!w) return;
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    await supabase.from('agent_training').insert({
-      user_id: user.id,
-      role_key: w.roleKey,
-      training_type: trainingType,
-      content: trainingContent.trim(),
-    });
+    try {
+      const res = await fetch('/api/training', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role_key: w.roleKey,
+          training_type: trainingType,
+          content: trainingContent.trim(),
+        }),
+      });
+      if (!res.ok) console.warn('Training save failed:', await res.text());
+    } catch (err) {
+      console.warn('Training save error:', err);
+    }
     setTrainingContent('');
     loadTrainingData(w.roleKey);
   };
 
   const deleteTraining = async (id: string) => {
-    const supabase = createClient();
-    await supabase.from('agent_training').delete().eq('id', id);
+    try {
+      await fetch(`/api/training?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    } catch (err) {
+      console.warn('Training delete error:', err);
+    }
     if (selectedWorkerForTraining) {
       const w = regularWorkers.find(v => v.id === selectedWorkerForTraining);
       if (w) loadTrainingData(w.roleKey);
