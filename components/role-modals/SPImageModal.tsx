@@ -152,7 +152,7 @@ function TemplateManager({
 
   return (
     <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[88vh] flex flex-col overflow-hidden">
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="px-5 py-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
           <h3 className="text-white font-bold text-sm">🖼️ 레퍼런스 템플릿</h3>
@@ -243,11 +243,13 @@ function TemplateManager({
                           </div>
                         ) : (
                           <>
-                            {/* Thumbnail grid */}
-                            <div className={`aspect-square bg-gray-800 cursor-pointer grid ${t.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} gap-[1px]`}
+                            {/* Thumbnail grid — 항상 1:1 */}
+                            <div className={`aspect-square bg-gray-800 cursor-pointer grid ${t.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} gap-[1px] overflow-hidden`}
                               onClick={() => !editMode && toggleSelect(t.id)}>
                               {t.images.slice(0, 4).map((img, i) => (
-                                <img key={i} src={img.dataUrl} alt="" className="w-full h-full object-cover" />
+                                <div key={i} className="relative w-full h-full overflow-hidden">
+                                  <img src={img.dataUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                                </div>
                               ))}
                             </div>
                             {/* Bottom bar */}
