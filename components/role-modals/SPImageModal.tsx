@@ -81,25 +81,27 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
     setGeneratedImages([]);
 
     try {
-      const refDescriptions = Array.from(selectedRefs).map(i => {
-        const ref = references[i];
-        return ref ? `Reference image: ${ref.name}` : '';
-      }).filter(Boolean);
+      const extractBase64 = (dataUrl: string) => {
+        const idx = dataUrl.indexOf(',');
+        return idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl;
+      };
 
-      const finalPrompt = [
-        promptText.trim(),
-        productImage ? 'Product photo provided as reference for the product appearance.' : '',
-      ].filter(Boolean).join('\n');
+      const productB64 = productImage ? extractBase64(productImage) : null;
+      const refB64List = Array.from(selectedRefs).map(i => {
+        const ref = references[i];
+        return ref ? extractBase64(ref.dataUrl) : '';
+      }).filter(Boolean);
 
       const res = await fetch('/api/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: finalPrompt,
+          prompt: promptText.trim(),
           aspectRatio,
           imageSize: resolution,
           numberOfImages: Math.max(selectedRefs.size, 1),
-          referenceDescriptions: refDescriptions,
+          productImageBase64: productB64,
+          referenceImagesBase64: refB64List,
         }),
       });
 
@@ -110,7 +112,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
       } else if (data.images && data.images.length > 0) {
         setGeneratedImages(data.images.map((b64: string) => ({
           base64: b64,
-          prompt: promptText,
+          prompt: data.generatedPrompt || promptText,
         })));
       } else {
         setError('이미지가 생성되지 않았습니다. 프롬프트를 수정해보세요.');
@@ -277,6 +279,12 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
         {/* Generated Images Preview */}
         {generatedImages.length > 0 && (
           <div>
+            {generatedImages[0]?.prompt && generatedImages[0].prompt !== promptText && (
+              <details className="mb-2">
+                <summary className="text-[10px] text-gray-500 cursor-pointer hover:text-gray-300">AI가 분석한 프롬프트 보기</summary>
+                <p className="text-[10px] text-gray-600 bg-gray-800/50 rounded-lg p-2 mt-1 leading-relaxed">{generatedImages[0].prompt}</p>
+              </details>
+            )}
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs text-gray-400 font-medium">생성된 이미지 ({generatedImages.length}장)</div>
               <button onClick={handleDownloadZip}
