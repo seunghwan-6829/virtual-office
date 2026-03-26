@@ -391,20 +391,38 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
     if (!promptText.trim()) return;
     setGenerating(true);
     setError('');
-    setGeneratedImages(Array.from({ length: imageCount }, () => ({ base64: '', status: 'loading' as const })));
 
     const modelInfo = MODELS.find(m => m.id === selectedModel);
     if (modelInfo && !modelInfo.available) {
       setError(`${modelInfo.label}은 아직 연동 준비 중입니다. 다른 모델을 선택해주세요.`);
       setGenerating(false);
-      setGeneratedImages([]);
       return;
     }
 
-    const selectedRefImages = Array.from(selectedRefs).map(i => references[i]?.base64).filter(Boolean);
+    const selectedRefImages = Array.from(selectedRefs).map(i => references[i]).filter(Boolean);
+    const hasRefs = selectedRefImages.length > 0;
+    const totalImages = hasRefs ? selectedRefImages.length * imageCount : imageCount;
 
-    const promises = Array.from({ length: imageCount }, async (_, idx) => {
+    setGeneratedImages(Array.from({ length: totalImages }, () => ({ base64: '', status: 'loading' as const })));
+
+    type Job = { idx: number; refBase64: string | null };
+    const jobs: Job[] = [];
+
+    if (hasRefs) {
+      selectedRefImages.forEach((ref, refIdx) => {
+        for (let c = 0; c < imageCount; c++) {
+          jobs.push({ idx: refIdx * imageCount + c, refBase64: ref.base64 });
+        }
+      });
+    } else {
+      for (let c = 0; c < imageCount; c++) {
+        jobs.push({ idx: c, refBase64: null });
+      }
+    }
+
+    const promises = jobs.map(async (job) => {
       try {
+        const refList = job.refBase64 ? [job.refBase64] : [];
         const res = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -415,22 +433,22 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
             model: selectedModel,
             productImageBase64: productImages[0]?.base64 || null,
             productImagesBase64: productImages.map(p => p.base64),
-            referenceImagesBase64: selectedRefImages,
+            referenceImagesBase64: refList,
             extraImagesBase64: extraImages.map(e => e.base64),
           }),
         });
         const data = await res.json();
         if (data.error) {
           const st = data.isSafety ? 'violation' : 'error';
-          setGeneratedImages(prev => prev.map((img, ii) => ii === idx ? { ...img, status: st as 'violation' | 'error', base64: '', errorMsg: data.error } : img));
-          if (idx === 0) setError(data.error);
+          setGeneratedImages(prev => prev.map((img, ii) => ii === job.idx ? { ...img, status: st as 'violation' | 'error', base64: '', errorMsg: data.error } : img));
+          if (job.idx === 0) setError(data.error);
         } else if (data.images?.[0]) {
-          setGeneratedImages(prev => prev.map((img, ii) => ii === idx ? { base64: data.images[0], status: 'done' } : img));
+          setGeneratedImages(prev => prev.map((img, ii) => ii === job.idx ? { base64: data.images[0], status: 'done' } : img));
         } else {
-          setGeneratedImages(prev => prev.map((img, ii) => ii === idx ? { ...img, status: 'error', errorMsg: '이미지가 반환되지 않았습니다.' } : img));
+          setGeneratedImages(prev => prev.map((img, ii) => ii === job.idx ? { ...img, status: 'error', errorMsg: '이미지가 반환되지 않았습니다.' } : img));
         }
       } catch (err) {
-        setGeneratedImages(prev => prev.map((img, ii) => ii === idx ? { ...img, status: 'error', errorMsg: err instanceof Error ? err.message : '네트워크 오류' } : img));
+        setGeneratedImages(prev => prev.map((img, ii) => ii === job.idx ? { ...img, status: 'error', errorMsg: err instanceof Error ? err.message : '네트워크 오류' } : img));
       }
     });
 
@@ -477,6 +495,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
   };
 
   const curModel = MODELS.find(m => m.id === selectedModel) || MODELS[0];
+  const totalGenCount = selectedRefs.size > 0 ? selectedRefs.size * imageCount : imageCount;
   const doneCount = generatedImages.filter(i => i.status === 'done').length;
 
   /* ═══════════ RENDER ═══════════ */
@@ -554,7 +573,12 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
                 ))}
               </div>
             )}
-            {references.length > 0 && <p className="text-[9px] text-gray-600 mt-1">클릭하여 선택 ({selectedRefs.size}개)</p>}
+            {references.length > 0 && (
+              <p className="text-[9px] text-gray-600 mt-1">
+                클릭하여 선택 ({selectedRefs.size}개)
+                {selectedRefs.size > 0 && <span className="text-pink-400/70"> → 총 {selectedRefs.size} × {imageCount} = {selectedRefs.size * imageCount}장 생성</span>}
+              </p>
+            )}
           </section>
 
           {/* 참고 이미지 (번호 부여) */}
@@ -632,7 +656,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
               </div>
             </div>
             <div>
-              <div className="text-[10px] text-gray-500 mb-1">매수</div>
+              <div className="text-[10px] text-gray-500 mb-1">레퍼런스당</div>
               <div className="flex flex-col gap-1">
                 {IMAGE_COUNTS.map(c => (
                   <button key={c} onClick={() => setImageCount(c)}
@@ -671,7 +695,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
             </div>
             <button onClick={handleGenerate} disabled={generating || !promptText.trim()}
               className="flex-1 px-4 py-2.5 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white rounded-xl text-xs font-medium transition-all">
-              {generating ? '🔄 생성 중...' : `🎨 이미지 생성 (${imageCount}장)`}
+              {generating ? '🔄 생성 중...' : `🎨 이미지 생성 (${totalGenCount}장)`}
             </button>
           </section>
 
@@ -717,7 +741,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
 
           {/* 생성된 이미지 / 로딩 */}
           {generatedImages.length > 0 ? (
-            <div className={`grid gap-3 ${generatedImages.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            <div className={`grid gap-3 ${generatedImages.length === 1 ? 'grid-cols-1' : generatedImages.length <= 4 ? 'grid-cols-2' : 'grid-cols-3'}`}>
               {generatedImages.map((img, i) => (
                 <div key={i} className="relative aspect-square bg-gray-900 rounded-xl overflow-hidden border border-gray-800">
                   {img.status === 'loading' && (
