@@ -243,14 +243,18 @@ function TemplateManager({
                           </div>
                         ) : (
                           <>
-                            {/* Thumbnail grid — 항상 1:1 */}
-                            <div className={`aspect-square bg-gray-800 cursor-pointer grid ${t.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} gap-[1px] overflow-hidden`}
+                            {/* Thumbnail — 강제 1:1 */}
+                            <div className="relative w-full overflow-hidden cursor-pointer" style={{ paddingBottom: '100%' }}
                               onClick={() => !editMode && toggleSelect(t.id)}>
-                              {t.images.slice(0, 4).map((img, i) => (
-                                <div key={i} className="relative w-full h-full overflow-hidden">
-                                  <img src={img.dataUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                              {t.images.length === 1 ? (
+                                <img src={t.images[0].dataUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                              ) : (
+                                <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-[1px] bg-gray-800">
+                                  {t.images.slice(0, 4).map((img, i) => (
+                                    <img key={i} src={img.dataUrl} alt="" className="w-full h-full object-cover" />
+                                  ))}
                                 </div>
-                              ))}
+                              )}
                             </div>
                             {/* Bottom bar */}
                             <div className="bg-gray-900/90 px-2 py-1.5 flex items-center justify-between">
