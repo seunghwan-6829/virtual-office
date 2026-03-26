@@ -367,8 +367,11 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
   const [batches, setBatches] = useState<ImageBatch[]>([]);
   const [error, setError] = useState('');
 
-  /* ── 뷰어 ── */
+  /* ── 뷰어 / 수정 ── */
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<{ batchId: string; imgIdx: number; base64: string } | null>(null);
+  const [editPrompt, setEditPrompt] = useState('');
+  const [editLoading, setEditLoading] = useState(false);
 
   /* ── 템플릿 로드/저장 (localStorage + Supabase) ── */
   const loadTemplates = useCallback(async () => {
@@ -549,6 +552,69 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
 
     await Promise.all(promises);
     setGenerating(false);
+  };
+
+  /* ── 이미지 수정 (리파인) ── */
+  const handleEditImage = async () => {
+    if (!editTarget || !editPrompt.trim()) return;
+    setEditLoading(true);
+
+    const { batchId, imgIdx, base64: srcBase64 } = editTarget;
+
+    const refineBatchId = `refine_${Date.now()}`;
+    const refineBatch: ImageBatch = {
+      id: refineBatchId,
+      prompt: `✏️ 수정: ${editPrompt.trim()}`,
+      createdAt: Date.now(),
+      images: [{ base64: '', status: 'loading' }],
+    };
+    setBatches(prev => [refineBatch, ...prev]);
+
+    setEditTarget(null);
+    setEditPrompt('');
+
+    try {
+      const res = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: editPrompt.trim(),
+          aspectRatio,
+          imageSize: resolution,
+          model: selectedModel,
+          productImagesBase64: [],
+          referenceImagesBase64: [srcBase64],
+          extraImagesBase64: [],
+        }),
+      });
+
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const text = await res.text();
+        throw new Error(text.slice(0, 100) || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (data.error) {
+        const st = data.isSafety ? 'violation' : 'error';
+        setBatches(prev => prev.map(b => b.id === refineBatchId
+          ? { ...b, images: [{ base64: '', status: st as 'violation' | 'error', errorMsg: data.error }] }
+          : b));
+      } else if (data.images?.[0]) {
+        setBatches(prev => prev.map(b => b.id === refineBatchId
+          ? { ...b, images: [{ base64: data.images[0], status: 'done' }] }
+          : b));
+      } else {
+        setBatches(prev => prev.map(b => b.id === refineBatchId
+          ? { ...b, images: [{ base64: '', status: 'error', errorMsg: '이미지가 반환되지 않았습니다.' }] }
+          : b));
+      }
+    } catch (err) {
+      setBatches(prev => prev.map(b => b.id === refineBatchId
+        ? { ...b, images: [{ base64: '', status: 'error', errorMsg: err instanceof Error ? err.message : '네트워크 오류' }] }
+        : b));
+    }
+    setEditLoading(false);
   };
 
   /* ── 다운로드 ── */
@@ -855,12 +921,16 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
                               </div>
                             )}
                             {img.status === 'done' && (
-                              <div className="group cursor-pointer h-full" onClick={() => setZoomSrc(`data:image/png;base64,${img.base64}`)}>
+                              <div className="group h-full relative">
                                 <img src={`data:image/png;base64,${img.base64}`} alt={`Generated ${i + 1}`} className="w-full h-full object-cover" />
-                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                                  <span className="opacity-0 group-hover:opacity-100 text-white text-xs font-medium transition-opacity">🔍 확대</span>
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors" />
+                                <div className="absolute inset-0 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button onClick={() => setZoomSrc(`data:image/png;base64,${img.base64}`)}
+                                    className="w-8 h-8 bg-black/70 hover:bg-black/90 text-white rounded-full text-sm flex items-center justify-center transition-colors" title="확대">🔍</button>
+                                  <button onClick={() => { setEditTarget({ batchId: batch.id, imgIdx: i, base64: img.base64 }); setEditPrompt(''); }}
+                                    className="w-8 h-8 bg-violet-600/80 hover:bg-violet-500 text-white rounded-full text-sm flex items-center justify-center transition-colors" title="수정">✏️</button>
                                 </div>
-                                <button onClick={e => { e.stopPropagation(); handleDownloadSingle(img.base64, i); }}
+                                <button onClick={() => handleDownloadSingle(img.base64, i)}
                                   className="absolute bottom-1.5 right-1.5 w-6 h-6 bg-black/60 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80">⬇</button>
                               </div>
                             )}
@@ -900,6 +970,53 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
 
       {/* 이미지 확대 뷰어 */}
       {zoomSrc && <ImageZoom src={zoomSrc} onClose={() => setZoomSrc(null)} />}
+
+      {/* 이미지 수정 프롬프트 */}
+      {editTarget && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/70" onClick={() => setEditTarget(null)}>
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-800 flex items-center gap-3">
+              <div className="w-16 h-16 rounded-lg overflow-hidden border border-violet-500/40 flex-shrink-0">
+                <img src={`data:image/png;base64,${editTarget.base64}`} alt="원본" className="w-full h-full object-cover" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-white text-sm font-bold">이미지 수정</h4>
+                <p className="text-gray-500 text-[11px]">이 이미지를 기반으로 수정 요청을 보냅니다</p>
+              </div>
+              <button onClick={() => setEditTarget(null)} className="text-gray-500 hover:text-white transition-colors text-lg">✕</button>
+            </div>
+            <div className="p-4 space-y-3">
+              <textarea
+                value={editPrompt}
+                onChange={e => setEditPrompt(e.target.value)}
+                placeholder="수정할 내용을 입력하세요... (예: 배경을 흰색으로 변경, 밝기를 올려줘, 상품을 더 크게)"
+                rows={3}
+                autoFocus
+                className="w-full bg-gray-800 text-white text-xs rounded-xl px-4 py-3 border border-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-none placeholder-gray-600"
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && editPrompt.trim()) { e.preventDefault(); handleEditImage(); } }}
+              />
+              <div className="flex gap-2">
+                <button onClick={() => setEditTarget(null)}
+                  className="flex-1 py-2.5 bg-gray-800 text-gray-400 rounded-xl text-xs hover:bg-gray-700 transition-colors">
+                  취소
+                </button>
+                <button onClick={handleEditImage} disabled={!editPrompt.trim() || editLoading}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white rounded-xl text-xs font-medium transition-all">
+                  {editLoading ? '수정 중...' : '✏️ 수정 요청'}
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {['배경을 흰색으로', '밝기를 올려줘', '상품을 더 크게', '그림자 추가', '분위기를 따뜻하게', '색감을 더 선명하게'].map(q => (
+                  <button key={q} onClick={() => setEditPrompt(prev => prev ? `${prev}, ${q}` : q)}
+                    className="px-2 py-1 bg-gray-800 text-gray-500 rounded-lg text-[10px] hover:bg-violet-600/20 hover:text-violet-400 transition-colors">
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 템플릿 관리 플로팅 창 */}
       <TemplateManager
