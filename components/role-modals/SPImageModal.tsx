@@ -45,6 +45,208 @@ function ImageZoom({ src, onClose }: { src: string; onClose: () => void }) {
   );
 }
 
+/* ── 템플릿 관리 플로팅 창 ─────────────────── */
+function TemplateManager({
+  open, onClose, templates, onSave, onDelete, onApply, onUpdate,
+}: {
+  open: boolean;
+  onClose: () => void;
+  templates: RefTemplate[];
+  onSave: (name: string, images: UploadedImage[]) => void;
+  onDelete: (id: string) => void;
+  onApply: (images: UploadedImage[]) => void;
+  onUpdate: (id: string, name: string, images: UploadedImage[]) => void;
+}) {
+  const [tab, setTab] = useState<'list' | 'create'>('list');
+  const [newName, setNewName] = useState('');
+  const [newImages, setNewImages] = useState<UploadedImage[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editImages, setEditImages] = useState<UploadedImage[]>([]);
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const createInputRef = useRef<HTMLInputElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFilesForCreate = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        setNewImages(prev => [...prev, { dataUrl, base64: extractBase64(dataUrl) }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleFilesForEdit = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        setEditImages(prev => [...prev, { dataUrl, base64: extractBase64(dataUrl) }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const startEdit = (t: RefTemplate) => {
+    setEditingId(t.id);
+    setEditName(t.name);
+    setEditImages([...t.images]);
+    setTab('list');
+  };
+
+  const saveEdit = () => {
+    if (editingId && editName.trim() && editImages.length > 0) {
+      onUpdate(editingId, editName.trim(), editImages);
+      setEditingId(null);
+    }
+  };
+
+  const cancelEdit = () => { setEditingId(null); setEditName(''); setEditImages([]); };
+
+  const handleCreate = () => {
+    if (newName.trim() && newImages.length > 0) {
+      onSave(newName.trim(), newImages);
+      setNewName('');
+      setNewImages([]);
+      setTab('list');
+    }
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="p-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
+          <h3 className="text-white font-bold text-sm">🖼️ 레퍼런스 템플릿 관리</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors text-lg">✕</button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-800 flex-shrink-0">
+          <button onClick={() => setTab('list')}
+            className={`flex-1 py-2.5 text-xs font-medium transition-colors ${tab === 'list' ? 'text-violet-400 border-b-2 border-violet-400' : 'text-gray-500 hover:text-gray-300'}`}>
+            저장된 템플릿 ({templates.length})
+          </button>
+          <button onClick={() => setTab('create')}
+            className={`flex-1 py-2.5 text-xs font-medium transition-colors ${tab === 'create' ? 'text-violet-400 border-b-2 border-violet-400' : 'text-gray-500 hover:text-gray-300'}`}>
+            + 새 템플릿 만들기
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {tab === 'list' && (
+            <>
+              {templates.length === 0 && (
+                <div className="text-center py-12 text-gray-600">
+                  <div className="text-3xl mb-2">📁</div>
+                  <p className="text-xs">저장된 템플릿이 없습니다</p>
+                  <button onClick={() => setTab('create')} className="mt-3 text-[11px] text-violet-400 hover:text-violet-300">+ 새 템플릿 만들기</button>
+                </div>
+              )}
+              {templates.map(t => (
+                <div key={t.id} className="bg-gray-800/60 border border-gray-700 rounded-xl p-3">
+                  {editingId === t.id ? (
+                    /* ── 편집 모드 ── */
+                    <div className="space-y-3">
+                      <input value={editName} onChange={e => setEditName(e.target.value)}
+                        className="w-full bg-gray-900 text-white text-xs rounded-lg px-3 py-2 border border-violet-500/50 focus:outline-none focus:border-violet-500" />
+                      <div className="flex flex-wrap gap-2">
+                        {editImages.map((img, i) => (
+                          <div key={i} className="relative w-14 h-14 rounded-lg overflow-hidden border border-gray-600 group cursor-pointer" onClick={() => setPreviewSrc(img.dataUrl)}>
+                            <img src={img.dataUrl} alt="" className="w-full h-full object-cover" />
+                            <button onClick={e => { e.stopPropagation(); setEditImages(prev => prev.filter((_, j) => j !== i)); }}
+                              className="absolute top-0 right-0 w-4 h-4 bg-red-600 text-white rounded-full text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                          </div>
+                        ))}
+                        <button onClick={() => editInputRef.current?.click()}
+                          className="w-14 h-14 rounded-lg border-2 border-dashed border-gray-600 hover:border-violet-500 flex items-center justify-center text-gray-600 hover:text-violet-400 transition-colors text-lg">+</button>
+                        <input ref={editInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFilesForEdit} />
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <button onClick={cancelEdit} className="text-[11px] text-gray-400 px-3 py-1.5 rounded-lg hover:text-white transition-colors">취소</button>
+                        <button onClick={saveEdit} disabled={!editName.trim() || editImages.length === 0}
+                          className="text-[11px] bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-500 disabled:bg-gray-700 disabled:text-gray-500 transition-colors">저장</button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* ── 보기 모드 ── */
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-white font-medium">{t.name}</span>
+                        <span className="text-[10px] text-gray-500">{t.images.length}장</span>
+                      </div>
+                      <div className="flex gap-1.5 flex-wrap mb-3">
+                        {t.images.map((img, i) => (
+                          <div key={i} className="w-12 h-12 rounded-lg overflow-hidden border border-gray-700 cursor-pointer hover:border-gray-500 transition-colors" onClick={() => setPreviewSrc(img.dataUrl)}>
+                            <img src={img.dataUrl} alt="" className="w-full h-full object-cover" />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => { onApply(t.images); onClose(); }}
+                          className="flex-1 text-[11px] bg-green-600/20 text-green-400 py-1.5 rounded-lg hover:bg-green-600/30 transition-colors font-medium">적용</button>
+                        <button onClick={() => startEdit(t)}
+                          className="text-[11px] bg-gray-700/50 text-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-700 transition-colors">수정</button>
+                        <button onClick={() => onDelete(t.id)}
+                          className="text-[11px] bg-red-900/20 text-red-400 px-3 py-1.5 rounded-lg hover:bg-red-900/30 transition-colors">삭제</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </>
+          )}
+
+          {tab === 'create' && (
+            <div className="space-y-4">
+              <div>
+                <label className="text-[11px] text-gray-400 font-medium mb-1.5 block">템플릿 이름</label>
+                <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="예: 화장품 깔끔 배경"
+                  className="w-full bg-gray-800 text-white text-xs rounded-xl px-3 py-2.5 border border-gray-700 focus:border-violet-500 focus:outline-none" />
+              </div>
+              <div>
+                <label className="text-[11px] text-gray-400 font-medium mb-1.5 block">이미지 ({newImages.length}장)</label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {newImages.map((img, i) => (
+                    <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-600 group cursor-pointer" onClick={() => setPreviewSrc(img.dataUrl)}>
+                      <img src={img.dataUrl} alt="" className="w-full h-full object-cover" />
+                      <button onClick={e => { e.stopPropagation(); setNewImages(prev => prev.filter((_, j) => j !== i)); }}
+                        className="absolute top-0 right-0 w-4 h-4 bg-red-600 text-white rounded-full text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                    </div>
+                  ))}
+                  <button onClick={() => createInputRef.current?.click()}
+                    className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-600 hover:border-violet-500 flex items-center justify-center text-gray-600 hover:text-violet-400 transition-colors text-xl">+</button>
+                  <input ref={createInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFilesForCreate} />
+                </div>
+              </div>
+              <button onClick={handleCreate} disabled={!newName.trim() || newImages.length === 0}
+                className="w-full py-2.5 bg-violet-600 text-white rounded-xl text-xs font-medium hover:bg-violet-500 disabled:bg-gray-700 disabled:text-gray-500 transition-colors">
+                템플릿 저장
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 이미지 미리보기 */}
+      {previewSrc && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80" onClick={() => setPreviewSrc(null)}>
+          <img src={previewSrc} alt="preview" className="max-w-[80vw] max-h-[80vh] rounded-xl" onClick={e => e.stopPropagation()} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ═════════════════════════════════════════════ */
 export default function SPImageModal({ worker, onClose }: { worker: Worker; onClose: () => void }) {
   /* ── 상품 이미지 (1~4) ── */
@@ -56,7 +258,6 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
   const [selectedRefs, setSelectedRefs] = useState<Set<number>>(new Set());
   const [templates, setTemplates] = useState<RefTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
-  const [newTemplateName, setNewTemplateName] = useState('');
   const refInputRef = useRef<HTMLInputElement>(null);
 
   /* ── 참고 이미지 (1~4) ── */
@@ -117,6 +318,21 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
       const sb = createClient();
       await sb.from('image_ref_templates').delete().eq('id', id);
     } catch { /* noop */ }
+  };
+
+  const updateTemplate = async (id: string, name: string, images: UploadedImage[]) => {
+    const next = templates.map(t => t.id === id ? { ...t, name, images } : t);
+    setTemplates(next);
+    localStorage.setItem('sp_ref_templates', JSON.stringify(next));
+    try {
+      const sb = createClient();
+      await sb.from('image_ref_templates').update({ name, images }).eq('id', id);
+    } catch { /* noop */ }
+  };
+
+  const applyTemplate = (images: UploadedImage[]) => {
+    setReferences(images);
+    setSelectedRefs(new Set(images.map((_, i) => i)));
   };
 
   /* ── 히스토리 로드/저장 ── */
@@ -262,9 +478,9 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
   /* ═══════════ RENDER ═══════════ */
   return (
     <ModalShell worker={worker} onClose={onClose} wide>
-      <div className="flex h-full" style={{ minHeight: 520 }}>
+      <div className="flex h-full" style={{ minHeight: 560 }}>
         {/* ────── LEFT: 입력 패널 ────── */}
-        <div className="w-[420px] flex-shrink-0 border-r border-gray-800 overflow-y-auto p-4 space-y-4">
+        <div className="w-[460px] flex-shrink-0 border-r border-gray-800 overflow-y-auto p-5 space-y-4">
 
           {/* 상품 이미지 (1~4) */}
           <section>
@@ -313,37 +529,6 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
             </div>
             <input ref={refInputRef} type="file" accept="image/*" multiple className="hidden"
               onChange={e => handleFileUpload(e, setReferences, 14, references.length)} />
-
-            {/* 템플릿 패널 */}
-            {showTemplates && (
-              <div className="bg-gray-800/80 border border-gray-700 rounded-xl p-3 mb-2 space-y-2">
-                <div className="text-[11px] text-gray-300 font-medium">저장된 템플릿</div>
-                {templates.length === 0 && <p className="text-[10px] text-gray-600">저장된 템플릿이 없습니다.</p>}
-                {templates.map(t => (
-                  <div key={t.id} className="flex items-center gap-2 bg-gray-900/50 rounded-lg p-2">
-                    <div className="flex gap-1 flex-1 overflow-x-auto">
-                      {t.images.slice(0, 3).map((img, i) => (
-                        <img key={i} src={img.dataUrl} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
-                      ))}
-                      {t.images.length > 3 && <span className="text-[10px] text-gray-500 self-center">+{t.images.length - 3}</span>}
-                    </div>
-                    <span className="text-[11px] text-gray-300 truncate flex-shrink-0 max-w-[80px]">{t.name}</span>
-                    <button onClick={() => { setReferences(t.images); setSelectedRefs(new Set(t.images.map((_, i) => i))); setShowTemplates(false); }}
-                      className="text-[10px] text-green-400 hover:text-green-300 flex-shrink-0">적용</button>
-                    <button onClick={() => deleteTemplate(t.id)}
-                      className="text-[10px] text-red-400 hover:text-red-300 flex-shrink-0">삭제</button>
-                  </div>
-                ))}
-                {references.length > 0 && (
-                  <div className="flex gap-2 items-center mt-2">
-                    <input value={newTemplateName} onChange={e => setNewTemplateName(e.target.value)} placeholder="템플릿 이름"
-                      className="flex-1 bg-gray-900 text-white text-[11px] rounded-lg px-2 py-1.5 border border-gray-700 focus:border-violet-500 focus:outline-none" />
-                    <button onClick={() => { if (newTemplateName.trim()) { saveTemplate(newTemplateName.trim(), references); setNewTemplateName(''); } }}
-                      className="text-[10px] bg-violet-600 text-white px-2 py-1.5 rounded-lg hover:bg-violet-500 flex-shrink-0">현재 레퍼런스 저장</button>
-                  </div>
-                )}
-              </div>
-            )}
 
             {references.length === 0 ? (
               <button onClick={() => refInputRef.current?.click()}
@@ -577,6 +762,17 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
 
       {/* 이미지 확대 뷰어 */}
       {zoomSrc && <ImageZoom src={zoomSrc} onClose={() => setZoomSrc(null)} />}
+
+      {/* 템플릿 관리 플로팅 창 */}
+      <TemplateManager
+        open={showTemplates}
+        onClose={() => setShowTemplates(false)}
+        templates={templates}
+        onSave={saveTemplate}
+        onDelete={deleteTemplate}
+        onApply={applyTemplate}
+        onUpdate={updateTemplate}
+      />
 
       <style jsx>{`
         @keyframes progress {

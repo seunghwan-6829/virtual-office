@@ -15,7 +15,7 @@ export default function ModalShell({ worker, onClose, children, wide }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className={`bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl mx-4 overflow-hidden flex flex-col ${wide ? 'w-full max-w-5xl max-h-[90vh]' : 'w-full max-w-md max-h-[85vh]'}`}>
+      <div className={`bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl mx-4 overflow-hidden flex flex-col ${wide ? 'w-full max-w-6xl max-h-[92vh]' : 'w-full max-w-md max-h-[85vh]'}`}>
         <div className="p-4 border-b border-gray-700 flex items-center gap-3 flex-shrink-0">
           <div className="w-11 h-11 rounded-full overflow-hidden flex-shrink-0 border-2"
             style={{ borderColor: color }}>
