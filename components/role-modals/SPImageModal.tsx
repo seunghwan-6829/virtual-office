@@ -24,9 +24,21 @@ const PROMPT_TEMPLATES = [
   { label: '레퍼런스 변형', text: '레퍼런스 내에 있는 이미지를 비슷하게 만들어주는데, 비슷한 느낌을 참고해서 조금 다양하게 만들어줘!' },
 ];
 
+/* ── 카테고리 ──────────────────────────────── */
+const CATEGORIES = [
+  { id: 'minimal', label: '미니멀', icon: '◻️' },
+  { id: 'luxury', label: '럭셔리', icon: '✨' },
+  { id: 'nature', label: '자연', icon: '🌿' },
+  { id: 'vivid', label: '비비드', icon: '🎨' },
+  { id: 'modern', label: '모던', icon: '🔷' },
+  { id: 'vintage', label: '빈티지', icon: '📷' },
+  { id: 'white', label: '화이트', icon: '🤍' },
+  { id: 'dark', label: '다크', icon: '🖤' },
+];
+
 /* ── 타입 ─────────────────────────────────── */
 interface UploadedImage { dataUrl: string; base64: string }
-interface RefTemplate { id: string; name: string; images: { dataUrl: string; base64: string }[] }
+interface RefTemplate { id: string; category: string; images: { dataUrl: string; base64: string }[]; name?: string }
 interface GeneratedImage { base64: string; status: 'loading' | 'done' | 'violation' | 'error'; errorMsg?: string }
 interface HistoryItem { id: string; prompt: string; model: string; images: string[]; createdAt: number }
 
@@ -77,195 +89,248 @@ function TemplateManager({
   open: boolean;
   onClose: () => void;
   templates: RefTemplate[];
-  onSave: (name: string, images: UploadedImage[]) => void;
+  onSave: (category: string, images: UploadedImage[]) => void;
   onDelete: (id: string) => void;
   onApply: (images: UploadedImage[]) => void;
-  onUpdate: (id: string, name: string, images: UploadedImage[]) => void;
+  onUpdate: (id: string, category: string, images: UploadedImage[]) => void;
 }) {
   const [tab, setTab] = useState<'list' | 'create'>('list');
-  const [newName, setNewName] = useState('');
-  const [newImages, setNewImages] = useState<UploadedImage[]>([]);
+  const [filterCat, setFilterCat] = useState('all');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [editMode, setEditMode] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
+  const [editCat, setEditCat] = useState('');
   const [editImages, setEditImages] = useState<UploadedImage[]>([]);
-  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const [newCat, setNewCat] = useState(CATEGORIES[0].id);
+  const [newImages, setNewImages] = useState<UploadedImage[]>([]);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const createInputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFilesForCreate = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFiles = (e: React.ChangeEvent<HTMLInputElement>, setter: React.Dispatch<React.SetStateAction<UploadedImage[]>>) => {
     const files = Array.from(e.target.files || []);
     files.forEach(file => {
       const reader = new FileReader();
       reader.onload = async () => {
         const resized = await resizeImage(reader.result as string, 1024);
-        setNewImages(prev => [...prev, resized]);
+        setter(prev => [...prev, resized]);
       };
       reader.readAsDataURL(file);
     });
     e.target.value = '';
   };
 
-  const handleFilesForEdit = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const resized = await resizeImage(reader.result as string, 1024);
-        setEditImages(prev => [...prev, resized]);
-      };
-      reader.readAsDataURL(file);
-    });
-    e.target.value = '';
+  const filtered = filterCat === 'all' ? templates : templates.filter(t => t.category === filterCat);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => { const s = new Set(prev); if (s.has(id)) s.delete(id); else s.add(id); return s; });
+  };
+
+  const handleApply = () => {
+    const allImages = templates.filter(t => selectedIds.has(t.id)).flatMap(t => t.images);
+    if (allImages.length > 0) { onApply(allImages); onClose(); }
   };
 
   const startEdit = (t: RefTemplate) => {
-    setEditingId(t.id);
-    setEditName(t.name);
-    setEditImages([...t.images]);
-    setTab('list');
+    setEditingId(t.id); setEditCat(t.category); setEditImages([...t.images]);
   };
 
   const saveEdit = () => {
-    if (editingId && editName.trim() && editImages.length > 0) {
-      onUpdate(editingId, editName.trim(), editImages);
-      setEditingId(null);
-    }
+    if (editingId && editImages.length > 0) { onUpdate(editingId, editCat, editImages); setEditingId(null); }
   };
-
-  const cancelEdit = () => { setEditingId(null); setEditName(''); setEditImages([]); };
 
   const handleCreate = () => {
-    if (newName.trim() && newImages.length > 0) {
-      onSave(newName.trim(), newImages);
-      setNewName('');
-      setNewImages([]);
-      setTab('list');
-    }
+    if (newImages.length > 0) { onSave(newCat, newImages); setNewImages([]); setTab('list'); }
   };
+
+  const confirmDelete = (id: string) => { setConfirmDeleteId(id); };
+  const doDelete = () => { if (confirmDeleteId) { onDelete(confirmDeleteId); setConfirmDeleteId(null); setSelectedIds(prev => { const s = new Set(prev); s.delete(confirmDeleteId); return s; }); } };
+
+  const catLabel = (id: string) => CATEGORIES.find(c => c.id === id);
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="p-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
-          <h3 className="text-white font-bold text-sm">🖼️ 레퍼런스 템플릿 관리</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors text-lg">✕</button>
+        <div className="px-5 py-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
+          <h3 className="text-white font-bold text-sm">🖼️ 레퍼런스 템플릿</h3>
+          <div className="flex items-center gap-2">
+            {tab === 'list' && templates.length > 0 && (
+              <button onClick={() => { setEditMode(!editMode); if (editMode) setEditingId(null); }}
+                className={`text-[11px] px-3 py-1.5 rounded-lg transition-colors ${editMode ? 'bg-violet-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
+                {editMode ? '완료' : '편집'}
+              </button>
+            )}
+            <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors text-lg">✕</button>
+          </div>
         </div>
 
         {/* Tabs */}
         <div className="flex border-b border-gray-800 flex-shrink-0">
-          <button onClick={() => setTab('list')}
+          <button onClick={() => { setTab('list'); setEditMode(false); setEditingId(null); }}
             className={`flex-1 py-2.5 text-xs font-medium transition-colors ${tab === 'list' ? 'text-violet-400 border-b-2 border-violet-400' : 'text-gray-500 hover:text-gray-300'}`}>
             저장된 템플릿 ({templates.length})
           </button>
-          <button onClick={() => setTab('create')}
+          <button onClick={() => { setTab('create'); setEditMode(false); }}
             className={`flex-1 py-2.5 text-xs font-medium transition-colors ${tab === 'create' ? 'text-violet-400 border-b-2 border-violet-400' : 'text-gray-500 hover:text-gray-300'}`}>
-            + 새 템플릿 만들기
+            + 새 템플릿
           </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 overflow-y-auto">
           {tab === 'list' && (
-            <>
-              {templates.length === 0 && (
-                <div className="text-center py-12 text-gray-600">
-                  <div className="text-3xl mb-2">📁</div>
-                  <p className="text-xs">저장된 템플릿이 없습니다</p>
-                  <button onClick={() => setTab('create')} className="mt-3 text-[11px] text-violet-400 hover:text-violet-300">+ 새 템플릿 만들기</button>
+            <div className="p-5">
+              {/* Category Filter */}
+              <div className="flex gap-1.5 flex-wrap mb-4">
+                <button onClick={() => setFilterCat('all')}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] transition-colors ${filterCat === 'all' ? 'bg-violet-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>전체</button>
+                {CATEGORIES.map(c => {
+                  const count = templates.filter(t => t.category === c.id).length;
+                  if (count === 0) return null;
+                  return (
+                    <button key={c.id} onClick={() => setFilterCat(c.id)}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] transition-colors ${filterCat === c.id ? 'bg-violet-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
+                      {c.icon} {c.label} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+
+              {filtered.length === 0 ? (
+                <div className="text-center py-16 text-gray-600">
+                  <div className="text-4xl mb-3">📁</div>
+                  <p className="text-xs mb-3">저장된 템플릿이 없습니다</p>
+                  <button onClick={() => setTab('create')} className="text-[11px] text-violet-400 hover:text-violet-300">+ 새 템플릿 만들기</button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-3">
+                  {filtered.map(t => {
+                    const selected = selectedIds.has(t.id);
+                    const isEditing = editingId === t.id;
+                    const cat = catLabel(t.category);
+                    return (
+                      <div key={t.id} className={`relative rounded-xl overflow-hidden border-2 transition-all ${
+                        selected ? 'border-violet-500 ring-2 ring-violet-500/30' : 'border-gray-800 hover:border-gray-600'
+                      }`}>
+                        {isEditing ? (
+                          <div className="p-3 space-y-2 bg-gray-800">
+                            <div className="flex gap-1 flex-wrap">
+                              {CATEGORIES.map(c => (
+                                <button key={c.id} onClick={() => setEditCat(c.id)}
+                                  className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${editCat === c.id ? 'bg-violet-600 text-white' : 'bg-gray-700 text-gray-400'}`}>
+                                  {c.icon}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="flex gap-1 flex-wrap">
+                              {editImages.map((img, i) => (
+                                <div key={i} className="relative w-10 h-10 rounded overflow-hidden group">
+                                  <img src={img.dataUrl} alt="" className="w-full h-full object-cover" />
+                                  <button onClick={() => setEditImages(prev => prev.filter((_, j) => j !== i))}
+                                    className="absolute inset-0 bg-red-600/60 flex items-center justify-center opacity-0 group-hover:opacity-100 text-white text-[8px]">✕</button>
+                                </div>
+                              ))}
+                              <button onClick={() => editInputRef.current?.click()} className="w-10 h-10 rounded border border-dashed border-gray-600 flex items-center justify-center text-gray-500 text-sm">+</button>
+                              <input ref={editInputRef} type="file" accept="image/*" multiple className="hidden" onChange={e => handleFiles(e, setEditImages)} />
+                            </div>
+                            <div className="flex gap-1.5">
+                              <button onClick={() => setEditingId(null)} className="flex-1 text-[10px] bg-gray-700 text-gray-300 py-1 rounded-lg">취소</button>
+                              <button onClick={saveEdit} className="flex-1 text-[10px] bg-violet-600 text-white py-1 rounded-lg">저장</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            {/* Thumbnail grid */}
+                            <div className={`aspect-square bg-gray-800 cursor-pointer grid ${t.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} gap-[1px]`}
+                              onClick={() => !editMode && toggleSelect(t.id)}>
+                              {t.images.slice(0, 4).map((img, i) => (
+                                <img key={i} src={img.dataUrl} alt="" className="w-full h-full object-cover" />
+                              ))}
+                            </div>
+                            {/* Bottom bar */}
+                            <div className="bg-gray-900/90 px-2 py-1.5 flex items-center justify-between">
+                              <span className="text-[10px] text-gray-400">{cat?.icon} {cat?.label} · {t.images.length}장</span>
+                              {selected && !editMode && <span className="text-violet-400 text-[10px] font-bold">✓</span>}
+                            </div>
+                            {/* Edit overlay */}
+                            {editMode && (
+                              <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-2">
+                                <button onClick={() => startEdit(t)} className="text-[10px] bg-gray-800 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700">수정</button>
+                                <button onClick={() => confirmDelete(t.id)} className="text-[10px] bg-red-700 text-white px-3 py-1.5 rounded-lg hover:bg-red-600">삭제</button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
-              {templates.map(t => (
-                <div key={t.id} className="bg-gray-800/60 border border-gray-700 rounded-xl p-3">
-                  {editingId === t.id ? (
-                    /* ── 편집 모드 ── */
-                    <div className="space-y-3">
-                      <input value={editName} onChange={e => setEditName(e.target.value)}
-                        className="w-full bg-gray-900 text-white text-xs rounded-lg px-3 py-2 border border-violet-500/50 focus:outline-none focus:border-violet-500" />
-                      <div className="flex flex-wrap gap-2">
-                        {editImages.map((img, i) => (
-                          <div key={i} className="relative w-14 h-14 rounded-lg overflow-hidden border border-gray-600 group cursor-pointer" onClick={() => setPreviewSrc(img.dataUrl)}>
-                            <img src={img.dataUrl} alt="" className="w-full h-full object-cover" />
-                            <button onClick={e => { e.stopPropagation(); setEditImages(prev => prev.filter((_, j) => j !== i)); }}
-                              className="absolute top-0 right-0 w-4 h-4 bg-red-600 text-white rounded-full text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
-                          </div>
-                        ))}
-                        <button onClick={() => editInputRef.current?.click()}
-                          className="w-14 h-14 rounded-lg border-2 border-dashed border-gray-600 hover:border-violet-500 flex items-center justify-center text-gray-600 hover:text-violet-400 transition-colors text-lg">+</button>
-                        <input ref={editInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFilesForEdit} />
-                      </div>
-                      <div className="flex gap-2 justify-end">
-                        <button onClick={cancelEdit} className="text-[11px] text-gray-400 px-3 py-1.5 rounded-lg hover:text-white transition-colors">취소</button>
-                        <button onClick={saveEdit} disabled={!editName.trim() || editImages.length === 0}
-                          className="text-[11px] bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-500 disabled:bg-gray-700 disabled:text-gray-500 transition-colors">저장</button>
-                      </div>
-                    </div>
-                  ) : (
-                    /* ── 보기 모드 ── */
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-white font-medium">{t.name}</span>
-                        <span className="text-[10px] text-gray-500">{t.images.length}장</span>
-                      </div>
-                      <div className="flex gap-1.5 flex-wrap mb-3">
-                        {t.images.map((img, i) => (
-                          <div key={i} className="w-12 h-12 rounded-lg overflow-hidden border border-gray-700 cursor-pointer hover:border-gray-500 transition-colors" onClick={() => setPreviewSrc(img.dataUrl)}>
-                            <img src={img.dataUrl} alt="" className="w-full h-full object-cover" />
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => { onApply(t.images); onClose(); }}
-                          className="flex-1 text-[11px] bg-green-600/20 text-green-400 py-1.5 rounded-lg hover:bg-green-600/30 transition-colors font-medium">적용</button>
-                        <button onClick={() => startEdit(t)}
-                          className="text-[11px] bg-gray-700/50 text-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-700 transition-colors">수정</button>
-                        <button onClick={() => onDelete(t.id)}
-                          className="text-[11px] bg-red-900/20 text-red-400 px-3 py-1.5 rounded-lg hover:bg-red-900/30 transition-colors">삭제</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </>
+            </div>
           )}
 
           {tab === 'create' && (
-            <div className="space-y-4">
+            <div className="p-5 space-y-4">
               <div>
-                <label className="text-[11px] text-gray-400 font-medium mb-1.5 block">템플릿 이름</label>
-                <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="예: 화장품 깔끔 배경"
-                  className="w-full bg-gray-800 text-white text-xs rounded-xl px-3 py-2.5 border border-gray-700 focus:border-violet-500 focus:outline-none" />
+                <label className="text-[11px] text-gray-400 font-medium mb-2 block">카테고리 선택</label>
+                <div className="flex gap-2 flex-wrap">
+                  {CATEGORIES.map(c => (
+                    <button key={c.id} onClick={() => setNewCat(c.id)}
+                      className={`px-3 py-2 rounded-xl text-xs transition-all ${newCat === c.id ? 'bg-violet-600 text-white ring-2 ring-violet-400/30' : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'}`}>
+                      {c.icon} {c.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div>
-                <label className="text-[11px] text-gray-400 font-medium mb-1.5 block">이미지 ({newImages.length}장)</label>
-                <div className="flex flex-wrap gap-2 mb-2">
+                <label className="text-[11px] text-gray-400 font-medium mb-2 block">이미지 업로드 ({newImages.length}장)</label>
+                <div className="flex flex-wrap gap-2">
                   {newImages.map((img, i) => (
-                    <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-600 group cursor-pointer" onClick={() => setPreviewSrc(img.dataUrl)}>
+                    <div key={i} className="relative w-20 h-20 rounded-xl overflow-hidden border border-gray-600 group">
                       <img src={img.dataUrl} alt="" className="w-full h-full object-cover" />
-                      <button onClick={e => { e.stopPropagation(); setNewImages(prev => prev.filter((_, j) => j !== i)); }}
-                        className="absolute top-0 right-0 w-4 h-4 bg-red-600 text-white rounded-full text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                      <button onClick={() => setNewImages(prev => prev.filter((_, j) => j !== i))}
+                        className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-600 text-white rounded-full text-[9px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
                     </div>
                   ))}
                   <button onClick={() => createInputRef.current?.click()}
-                    className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-600 hover:border-violet-500 flex items-center justify-center text-gray-600 hover:text-violet-400 transition-colors text-xl">+</button>
-                  <input ref={createInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFilesForCreate} />
+                    className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-600 hover:border-violet-500 flex items-center justify-center text-gray-600 hover:text-violet-400 transition-colors text-2xl">+</button>
+                  <input ref={createInputRef} type="file" accept="image/*" multiple className="hidden" onChange={e => handleFiles(e, setNewImages)} />
                 </div>
               </div>
-              <button onClick={handleCreate} disabled={!newName.trim() || newImages.length === 0}
-                className="w-full py-2.5 bg-violet-600 text-white rounded-xl text-xs font-medium hover:bg-violet-500 disabled:bg-gray-700 disabled:text-gray-500 transition-colors">
+              <button onClick={handleCreate} disabled={newImages.length === 0}
+                className="w-full py-3 bg-violet-600 text-white rounded-xl text-sm font-medium hover:bg-violet-500 disabled:bg-gray-700 disabled:text-gray-500 transition-colors">
                 템플릿 저장
               </button>
             </div>
           )}
         </div>
+
+        {/* 하단 적용 버튼 */}
+        {tab === 'list' && selectedIds.size > 0 && !editMode && (
+          <div className="border-t border-gray-700 px-5 py-3 flex-shrink-0">
+            <button onClick={handleApply}
+              className="w-full py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-xl text-sm font-medium transition-all">
+              선택한 템플릿 적용 ({selectedIds.size}개 · {templates.filter(t => selectedIds.has(t.id)).reduce((a, t) => a + t.images.length, 0)}장)
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* 이미지 미리보기 */}
-      {previewSrc && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80" onClick={() => setPreviewSrc(null)}>
-          <img src={previewSrc} alt="preview" className="max-w-[80vw] max-h-[80vh] rounded-xl" onClick={e => e.stopPropagation()} />
+      {/* 삭제 확인 다이얼로그 */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70" onClick={() => setConfirmDeleteId(null)}>
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-sm mx-4 text-center" onClick={e => e.stopPropagation()}>
+            <div className="text-3xl mb-3">🗑️</div>
+            <p className="text-white text-sm font-medium mb-1">정말 삭제하시겠습니까?</p>
+            <p className="text-gray-500 text-xs mb-5">삭제하면 복구할 수 없습니다.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDeleteId(null)} className="flex-1 py-2.5 bg-gray-800 text-gray-300 rounded-xl text-xs hover:bg-gray-700 transition-colors">취소</button>
+              <button onClick={doDelete} className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-xs hover:bg-red-500 transition-colors">삭제</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -314,15 +379,19 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
       const { data: { user } } = await sb.auth.getUser();
       if (!user) return;
       const { data } = await sb.from('image_ref_templates').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
-      if (data) setTemplates(data.map((r: Record<string, unknown>) => ({ id: r.id as string, name: r.name as string, images: (r.images as { dataUrl: string; base64: string }[]) || [] })));
+      if (data) setTemplates(data.map((r: Record<string, unknown>) => ({
+        id: r.id as string,
+        category: (r.name as string) || 'minimal',
+        images: (r.images as { dataUrl: string; base64: string }[]) || [],
+      })));
     } catch {
       const saved = localStorage.getItem('sp_ref_templates');
       if (saved) try { setTemplates(JSON.parse(saved)); } catch { /* noop */ }
     }
   }, []);
 
-  const saveTemplate = async (name: string, images: UploadedImage[]) => {
-    const tmpl: RefTemplate = { id: `tmpl_${Date.now()}`, name, images };
+  const saveTemplate = async (category: string, images: UploadedImage[]) => {
+    const tmpl: RefTemplate = { id: `tmpl_${Date.now()}`, category, images };
     const next = [tmpl, ...templates];
     setTemplates(next);
     localStorage.setItem('sp_ref_templates', JSON.stringify(next));
@@ -330,7 +399,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
       const sb = createClient();
       const { data: { user } } = await sb.auth.getUser();
       if (user) {
-        await sb.from('image_ref_templates').insert({ id: tmpl.id, user_id: user.id, name, images });
+        await sb.from('image_ref_templates').insert({ id: tmpl.id, user_id: user.id, name: category, images });
       }
     } catch { /* fallback localStorage */ }
   };
@@ -345,19 +414,24 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
     } catch { /* noop */ }
   };
 
-  const updateTemplate = async (id: string, name: string, images: UploadedImage[]) => {
-    const next = templates.map(t => t.id === id ? { ...t, name, images } : t);
+  const updateTemplate = async (id: string, category: string, images: UploadedImage[]) => {
+    const next = templates.map(t => t.id === id ? { ...t, category, images } : t);
     setTemplates(next);
     localStorage.setItem('sp_ref_templates', JSON.stringify(next));
     try {
       const sb = createClient();
-      await sb.from('image_ref_templates').update({ name, images }).eq('id', id);
+      await sb.from('image_ref_templates').update({ name: category, images }).eq('id', id);
     } catch { /* noop */ }
   };
 
   const applyTemplate = (images: UploadedImage[]) => {
-    setReferences(images);
-    setSelectedRefs(new Set(images.map((_, i) => i)));
+    setReferences(prev => [...prev, ...images]);
+    setSelectedRefs(prev => {
+      const s = new Set(prev);
+      const start = references.length;
+      images.forEach((_, i) => s.add(start + i));
+      return s;
+    });
   };
 
   /* ── 히스토리 로드/저장 ── */
