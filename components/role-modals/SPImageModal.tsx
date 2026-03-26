@@ -40,6 +40,7 @@ const CATEGORIES = [
 interface UploadedImage { dataUrl: string; base64: string }
 interface RefTemplate { id: string; category: string; images: { dataUrl: string; base64: string }[]; name?: string }
 interface GeneratedImage { base64: string; status: 'loading' | 'done' | 'violation' | 'error'; errorMsg?: string }
+interface ImageBatch { id: string; images: GeneratedImage[]; prompt: string; createdAt: number }
 
 function extractBase64(dataUrl: string) {
   const idx = dataUrl.indexOf(',');
@@ -361,9 +362,9 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
   const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
   const [showModelPicker, setShowModelPicker] = useState(false);
 
-  /* ── 생성 결과 ── */
+  /* ── 생성 결과 (배치 누적, 최신이 위) ── */
   const [generating, setGenerating] = useState(false);
-  const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
+  const [batches, setBatches] = useState<ImageBatch[]>([]);
   const [error, setError] = useState('');
 
   /* ── 뷰어 ── */
@@ -472,7 +473,18 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
     const hasRefs = selectedRefImages.length > 0;
     const totalImages = hasRefs ? selectedRefImages.length * imageCount : imageCount;
 
-    setGeneratedImages(Array.from({ length: totalImages }, () => ({ base64: '', status: 'loading' as const })));
+    const batchId = `batch_${Date.now()}`;
+    const newBatch: ImageBatch = {
+      id: batchId,
+      prompt: promptText.trim(),
+      createdAt: Date.now(),
+      images: Array.from({ length: totalImages }, () => ({ base64: '', status: 'loading' as const })),
+    };
+    setBatches(prev => [newBatch, ...prev]);
+
+    const updateBatchImage = (idx: number, update: Partial<GeneratedImage>) => {
+      setBatches(prev => prev.map(b => b.id === batchId ? { ...b, images: b.images.map((img, ii) => ii === idx ? { ...img, ...update } : img) } : b));
+    };
 
     type Job = { idx: number; refBase64: string | null };
     const jobs: Job[] = [];
@@ -514,15 +526,15 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
         const data = await res.json();
         if (data.error) {
           const st = data.isSafety ? 'violation' : 'error';
-          setGeneratedImages(prev => prev.map((img, ii) => ii === job.idx ? { ...img, status: st as 'violation' | 'error', base64: '', errorMsg: data.error } : img));
+          updateBatchImage(job.idx, { status: st as 'violation' | 'error', base64: '', errorMsg: data.error });
           if (job.idx === 0) setError(data.error);
         } else if (data.images?.[0]) {
-          setGeneratedImages(prev => prev.map((img, ii) => ii === job.idx ? { base64: data.images[0], status: 'done' } : img));
+          updateBatchImage(job.idx, { base64: data.images[0], status: 'done' });
         } else {
-          setGeneratedImages(prev => prev.map((img, ii) => ii === job.idx ? { ...img, status: 'error', errorMsg: '이미지가 반환되지 않았습니다.' } : img));
+          updateBatchImage(job.idx, { status: 'error', errorMsg: '이미지가 반환되지 않았습니다.' });
         }
       } catch (err) {
-        setGeneratedImages(prev => prev.map((img, ii) => ii === job.idx ? { ...img, status: 'error', errorMsg: err instanceof Error ? err.message : '네트워크 오류' } : img));
+        updateBatchImage(job.idx, { status: 'error', errorMsg: err instanceof Error ? err.message : '네트워크 오류' });
       }
     });
 
@@ -543,11 +555,11 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
   };
 
   const handleDownloadZip = async () => {
-    const done = generatedImages.filter(i => i.status === 'done');
-    if (done.length === 0) return;
+    const allDone = batches.flatMap(b => b.images.filter(i => i.status === 'done'));
+    if (allDone.length === 0) return;
     const { default: JSZip } = await import('jszip');
     const zip = new JSZip();
-    done.forEach((img, i) => {
+    allDone.forEach((img, i) => {
       const binary = atob(img.base64);
       const bytes = new Uint8Array(binary.length);
       for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j);
@@ -560,9 +572,27 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
     URL.revokeObjectURL(url);
   };
 
+  const handleDownloadBatchZip = async (batch: ImageBatch) => {
+    const done = batch.images.filter(i => i.status === 'done');
+    if (done.length === 0) return;
+    const { default: JSZip } = await import('jszip');
+    const zip = new JSZip();
+    done.forEach((img, i) => {
+      const binary = atob(img.base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j);
+      zip.file(`image_${i + 1}.png`, bytes);
+    });
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `batch_${batch.id}.zip`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const curModel = MODELS.find(m => m.id === selectedModel) || MODELS[0];
   const totalGenCount = selectedRefs.size > 0 ? selectedRefs.size * imageCount : imageCount;
-  const doneCount = generatedImages.filter(i => i.status === 'done').length;
+  const allDoneCount = batches.reduce((acc, b) => acc + b.images.filter(i => i.status === 'done').length, 0);
 
   /* ═══════════ RENDER ═══════════ */
   return (
@@ -769,69 +799,93 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
         </div>
 
         {/* ────── RIGHT: 프리뷰 패널 ────── */}
-        <div className="flex-1 overflow-y-auto bg-gray-950/50 p-4">
-          <div className="flex items-center justify-between mb-3">
+        <div className="flex-1 flex flex-col bg-gray-950/50">
+          <div className="flex items-center justify-between px-4 pt-4 pb-2 flex-shrink-0">
             <span className="text-xs text-gray-400 font-medium">🖼️ 프리뷰</span>
-            {doneCount > 0 && (
-              <button onClick={handleDownloadZip} className="text-[10px] bg-green-600/20 text-green-400 px-2.5 py-1 rounded-lg hover:bg-green-600/30 transition-colors">📦 ZIP</button>
-            )}
+            <div className="flex gap-2">
+              {allDoneCount > 0 && (
+                <button onClick={handleDownloadZip} className="text-[10px] bg-green-600/20 text-green-400 px-2.5 py-1 rounded-lg hover:bg-green-600/30 transition-colors">📦 전체 ZIP ({allDoneCount}장)</button>
+              )}
+              {batches.length > 0 && (
+                <button onClick={() => setBatches([])} className="text-[10px] bg-gray-800 text-gray-500 px-2.5 py-1 rounded-lg hover:bg-gray-700 hover:text-gray-300 transition-colors">전체 삭제</button>
+              )}
+            </div>
           </div>
 
-          {/* 생성된 이미지 / 로딩 */}
-          {generatedImages.length > 0 ? (
-            <div className={`grid gap-3 ${generatedImages.length === 1 ? 'grid-cols-1' : generatedImages.length <= 4 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-              {generatedImages.map((img, i) => (
-                <div key={i} className="relative aspect-square bg-gray-900 rounded-xl overflow-hidden border border-gray-800">
-                  {img.status === 'loading' && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-                      <div className="relative w-16 h-16">
-                        <div className="absolute inset-0 rounded-full border-2 border-pink-500/20" />
-                        <div className="absolute inset-0 rounded-full border-2 border-t-pink-500 animate-spin" />
-                        <div className="absolute inset-2 rounded-full border-2 border-t-purple-400 animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }} />
+          <div className="flex-1 overflow-y-auto px-4 pb-4">
+            {batches.length > 0 ? (
+              <div className="space-y-4">
+                {batches.map((batch, bIdx) => {
+                  const batchDone = batch.images.filter(i => i.status === 'done').length;
+                  const cols = batch.images.length === 1 ? 'grid-cols-1' : batch.images.length <= 4 ? 'grid-cols-2' : 'grid-cols-3';
+                  return (
+                    <div key={batch.id} className={`rounded-xl border p-3 ${bIdx === 0 && generating ? 'border-pink-500/40 bg-pink-950/10' : 'border-gray-800 bg-gray-900/30'}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] text-gray-500 truncate max-w-[60%]">{batch.prompt}</p>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {batchDone > 0 && (
+                            <button onClick={() => handleDownloadBatchZip(batch)} className="text-[9px] text-green-400 hover:text-green-300 transition-colors">ZIP</button>
+                          )}
+                          <button onClick={() => setBatches(prev => prev.filter(b => b.id !== batch.id))} className="text-[9px] text-gray-600 hover:text-red-400 transition-colors">삭제</button>
+                        </div>
                       </div>
-                      <div className="text-[11px] text-gray-400 animate-pulse">이미지 생성 중...</div>
-                      <div className="w-32 h-1 bg-gray-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-pink-500 to-purple-500 rounded-full animate-progress" />
+                      <div className={`grid gap-2 ${cols}`}>
+                        {batch.images.map((img, i) => (
+                          <div key={i} className="relative aspect-square bg-gray-900 rounded-lg overflow-hidden border border-gray-800">
+                            {img.status === 'loading' && (
+                              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                                <div className="relative w-12 h-12">
+                                  <div className="absolute inset-0 rounded-full border-2 border-pink-500/20" />
+                                  <div className="absolute inset-0 rounded-full border-2 border-t-pink-500 animate-spin" />
+                                  <div className="absolute inset-2 rounded-full border-2 border-t-purple-400 animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }} />
+                                </div>
+                                <div className="text-[10px] text-gray-400 animate-pulse">생성 중...</div>
+                                <div className="w-24 h-1 bg-gray-800 rounded-full overflow-hidden">
+                                  <div className="h-full bg-gradient-to-r from-pink-500 to-purple-500 rounded-full animate-progress" />
+                                </div>
+                              </div>
+                            )}
+                            {img.status === 'done' && (
+                              <div className="group cursor-pointer h-full" onClick={() => setZoomSrc(`data:image/png;base64,${img.base64}`)}>
+                                <img src={`data:image/png;base64,${img.base64}`} alt={`Generated ${i + 1}`} className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                                  <span className="opacity-0 group-hover:opacity-100 text-white text-xs font-medium transition-opacity">🔍 확대</span>
+                                </div>
+                                <button onClick={e => { e.stopPropagation(); handleDownloadSingle(img.base64, i); }}
+                                  className="absolute bottom-1.5 right-1.5 w-6 h-6 bg-black/60 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80">⬇</button>
+                              </div>
+                            )}
+                            {img.status === 'violation' && (
+                              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-red-950/30">
+                                <div className="w-10 h-10 rounded-full bg-red-900/50 flex items-center justify-center">
+                                  <span className="text-xl">🚫</span>
+                                </div>
+                                <span className="text-red-400 text-[10px] font-medium">위반된 이미지</span>
+                              </div>
+                            )}
+                            {img.status === 'error' && (
+                              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-yellow-950/20 p-2">
+                                <div className="w-10 h-10 rounded-full bg-yellow-900/40 flex items-center justify-center">
+                                  <span className="text-xl">⚠️</span>
+                                </div>
+                                <span className="text-yellow-400 text-[10px] font-medium">생성 실패</span>
+                                <span className="text-yellow-500/60 text-[8px] text-center leading-relaxed max-w-[160px]">{img.errorMsg || '알 수 없는 오류'}</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  )}
-                  {img.status === 'done' && (
-                    <div className="group cursor-pointer h-full" onClick={() => setZoomSrc(`data:image/png;base64,${img.base64}`)}>
-                      <img src={`data:image/png;base64,${img.base64}`} alt={`Generated ${i + 1}`} className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                        <span className="opacity-0 group-hover:opacity-100 text-white text-xs font-medium transition-opacity">🔍 확대</span>
-                      </div>
-                      <button onClick={e => { e.stopPropagation(); handleDownloadSingle(img.base64, i); }}
-                        className="absolute bottom-2 right-2 w-7 h-7 bg-black/60 text-white rounded-full text-[11px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80">⬇</button>
-                    </div>
-                  )}
-                  {img.status === 'violation' && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-red-950/30">
-                      <div className="w-12 h-12 rounded-full bg-red-900/50 flex items-center justify-center">
-                        <span className="text-2xl">🚫</span>
-                      </div>
-                      <span className="text-red-400 text-[11px] font-medium">위반된 이미지</span>
-                      <span className="text-red-500/60 text-[9px]">안전 정책에 의해 차단됨</span>
-                    </div>
-                  )}
-                  {img.status === 'error' && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-yellow-950/20 p-3">
-                      <div className="w-12 h-12 rounded-full bg-yellow-900/40 flex items-center justify-center">
-                        <span className="text-2xl">⚠️</span>
-                      </div>
-                      <span className="text-yellow-400 text-[11px] font-medium">생성 실패</span>
-                      <span className="text-yellow-500/60 text-[9px] text-center leading-relaxed max-w-[200px]">{img.errorMsg || '알 수 없는 오류'}</span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-64 text-gray-700">
-              <div className="text-4xl mb-3">🎨</div>
-              <p className="text-xs">이미지를 생성하면 여기에 표시됩니다</p>
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-64 text-gray-700">
+                <div className="text-4xl mb-3">🎨</div>
+                <p className="text-xs">이미지를 생성하면 여기에 표시됩니다</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
