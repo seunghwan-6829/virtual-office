@@ -27,7 +27,7 @@ const PROMPT_TEMPLATES = [
 /* ── 타입 ─────────────────────────────────── */
 interface UploadedImage { dataUrl: string; base64: string }
 interface RefTemplate { id: string; name: string; images: { dataUrl: string; base64: string }[] }
-interface GeneratedImage { base64: string; status: 'loading' | 'done' | 'violation' }
+interface GeneratedImage { base64: string; status: 'loading' | 'done' | 'violation' | 'error'; errorMsg?: string }
 interface HistoryItem { id: string; prompt: string; model: string; images: string[]; createdAt: number }
 
 function extractBase64(dataUrl: string) {
@@ -421,25 +421,29 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
         });
         const data = await res.json();
         if (data.error) {
-          setGeneratedImages(prev => prev.map((img, i) => i === idx ? { ...img, status: 'violation', base64: '' } : img));
+          const st = data.isSafety ? 'violation' : 'error';
+          setGeneratedImages(prev => prev.map((img, ii) => ii === idx ? { ...img, status: st as 'violation' | 'error', base64: '', errorMsg: data.error } : img));
           if (idx === 0) setError(data.error);
         } else if (data.images?.[0]) {
-          setGeneratedImages(prev => prev.map((img, i) => i === idx ? { base64: data.images[0], status: 'done' } : img));
+          setGeneratedImages(prev => prev.map((img, ii) => ii === idx ? { base64: data.images[0], status: 'done' } : img));
         } else {
-          setGeneratedImages(prev => prev.map((img, i) => i === idx ? { ...img, status: 'violation' } : img));
+          setGeneratedImages(prev => prev.map((img, ii) => ii === idx ? { ...img, status: 'error', errorMsg: '이미지가 반환되지 않았습니다.' } : img));
         }
-      } catch {
-        setGeneratedImages(prev => prev.map((img, i) => i === idx ? { ...img, status: 'violation' } : img));
+      } catch (err) {
+        setGeneratedImages(prev => prev.map((img, ii) => ii === idx ? { ...img, status: 'error', errorMsg: err instanceof Error ? err.message : '네트워크 오류' } : img));
       }
     });
 
     await Promise.all(promises);
     setGenerating(false);
 
-    const completed = generatedImages.filter(i => i.status === 'done').map(i => i.base64);
-    if (completed.length > 0) {
-      saveToHistory(promptText, selectedModel, completed);
-    }
+    setGeneratedImages(prev => {
+      const completed = prev.filter(i => i.status === 'done' && i.base64).map(i => i.base64);
+      if (completed.length > 0) {
+        saveToHistory(promptText, selectedModel, completed);
+      }
+      return prev;
+    });
   };
 
   /* ── 다운로드 ── */
@@ -746,6 +750,15 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
                       </div>
                       <span className="text-red-400 text-[11px] font-medium">위반된 이미지</span>
                       <span className="text-red-500/60 text-[9px]">안전 정책에 의해 차단됨</span>
+                    </div>
+                  )}
+                  {img.status === 'error' && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-yellow-950/20 p-3">
+                      <div className="w-12 h-12 rounded-full bg-yellow-900/40 flex items-center justify-center">
+                        <span className="text-2xl">⚠️</span>
+                      </div>
+                      <span className="text-yellow-400 text-[11px] font-medium">생성 실패</span>
+                      <span className="text-yellow-500/60 text-[9px] text-center leading-relaxed max-w-[200px]">{img.errorMsg || '알 수 없는 오류'}</span>
                     </div>
                   )}
                 </div>

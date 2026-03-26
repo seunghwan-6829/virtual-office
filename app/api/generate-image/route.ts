@@ -98,9 +98,14 @@ export async function POST(req: NextRequest) {
 
     if (images.length === 0 && !textResponse) {
       const blockReason = candidate?.finishReason;
-      const safetyMsg = blockReason === 'SAFETY' ? ' (안전 필터에 의해 차단됨)' : '';
+      const isSafety = blockReason === 'SAFETY'
+        || data.candidates?.[0]?.safetyRatings?.some((r: Record<string, string>) => r.blocked)
+        || data.promptFeedback?.blockReason === 'SAFETY';
       return NextResponse.json({
-        error: `이미지가 생성되지 않았습니다${safetyMsg}. 프롬프트를 수정해보세요.`,
+        error: isSafety
+          ? '안전 정책에 의해 차단되었습니다.'
+          : '이미지가 생성되지 않았습니다. 프롬프트를 수정해보세요.',
+        isSafety,
       }, { status: 400 });
     }
 
@@ -112,6 +117,6 @@ export async function POST(req: NextRequest) {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('[generate-image] Error:', message);
-    return NextResponse.json({ error: `서버 오류: ${message}` }, { status: 500 });
+    return NextResponse.json({ error: `서버 오류: ${message}`, isSafety: false }, { status: 500 });
   }
 }
