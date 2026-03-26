@@ -139,7 +139,7 @@ const P = 'anthropic' as LLMProvider;
 const INITIAL: Worker[] = [
   makeWorker(1, 0, '김하늘', '상페 기획', 'spPlanner', '상세페이지 기획 (구성·레이아웃·스토리보드)', P, M),
   makeWorker(2, 1, '이서연', '상페 카피·후킹', 'spCopy', '상세페이지 카피+후킹 (헤드라인·본문·CTA·후킹문구)', P, M),
-  makeWorker(3, 2, '박지민', '상페 이미지', 'spImage', '상세페이지 제품 이미지 생성 (Gemini 3 Pro)', 'google' as LLMProvider, 'gemini-2.0-flash-exp'),
+  makeWorker(3, 2, '박지민', '상페 이미지', 'spImage', '상세페이지 제품 이미지 생성', 'google' as LLMProvider, 'gemini-2.0-flash-exp'),
   makeWorker(4, 3, '최유진', '상페 전환최적화', 'spCRO', '상세페이지 CRO (전환율 분석·A/B테스트)', P, M),
   makeWorker(5, 4, '정민수', 'DA 전략기획', 'daStrategy', 'DA 전략기획 (캠페인·타겟팅·매체선정)', P, M),
   makeWorker(6, 5, '강다현', 'DA 카피', 'daCopy', 'DA 광고카피 (소재 헤드라인·본문·CTA)', P, M),

@@ -1,151 +1,232 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Worker } from '@/lib/types';
 import ModalShell from './ModalShell';
+import { createClient } from '@/lib/supabase/client';
 
-const ASPECT_RATIOS = [
-  { label: '9:16 (세로)', value: '9:16' },
-  { label: '16:9 (가로)', value: '16:9' },
-  { label: '1:1 (정방형)', value: '1:1' },
+/* ── 모델 목록 ──────────────────────────────────── */
+interface ModelInfo { id: string; label: string; tag?: string; available: boolean }
+const MODELS: ModelInfo[] = [
+  { id: 'gemini-3.1-flash-image-preview', label: 'Nano Banana 2', tag: 'Flash', available: true },
+  { id: 'gemini-3-pro-image-preview', label: 'Nano Banana Pro', tag: 'Pro', available: true },
+  { id: 'seedream-4.5-edit', label: 'Seedream 4.5 Edit', tag: 'Edit', available: false },
+  { id: 'seedream-5', label: 'Seedream 5', tag: 'New', available: false },
 ];
 
-const RESOLUTIONS = [
-  { label: '4K', value: '4K' },
-  { label: '2K', value: '2K' },
-  { label: '1K', value: '1K' },
+const ASPECT_RATIOS = ['9:16', '16:9', '1:1'];
+const RESOLUTIONS = ['4K', '2K', '1K'];
+const IMAGE_COUNTS = [1, 2, 3, 4];
+
+const PROMPT_TEMPLATES = [
+  { label: '레퍼런스 배경 참고', text: '레퍼런스 내에 있는 제품 이미지처럼 배경을 비슷하게 해서 만들어줘' },
+  { label: '무드+참고이미지 결합', text: '전반적인 무드랑 배경과 각도는 레퍼런스 이미지처럼 만들어주고 \'참고 이미지 1번\'도 제작할 때 같이 넣어주라.' },
+  { label: '레퍼런스 변형', text: '레퍼런스 내에 있는 이미지를 비슷하게 만들어주는데, 비슷한 느낌을 참고해서 조금 다양하게 만들어줘!' },
 ];
 
-interface GeneratedImage {
-  base64: string;
-  prompt: string;
+/* ── 타입 ─────────────────────────────────── */
+interface UploadedImage { dataUrl: string; base64: string }
+interface RefTemplate { id: string; name: string; images: { dataUrl: string; base64: string }[] }
+interface GeneratedImage { base64: string; status: 'loading' | 'done' | 'violation' }
+interface HistoryItem { id: string; prompt: string; model: string; images: string[]; createdAt: number }
+
+function extractBase64(dataUrl: string) {
+  const idx = dataUrl.indexOf(',');
+  return idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl;
 }
 
+/* ── 이미지 확대 뷰어 ──────────────────────── */
+function ImageZoom({ src, onClose }: { src: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80" onClick={onClose}>
+      <img src={src} alt="zoom" className="max-w-[90vw] max-h-[90vh] rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
+      <button onClick={onClose} className="absolute top-4 right-4 text-white text-2xl bg-black/50 w-10 h-10 rounded-full flex items-center justify-center">✕</button>
+    </div>
+  );
+}
+
+/* ═════════════════════════════════════════════ */
 export default function SPImageModal({ worker, onClose }: { worker: Worker; onClose: () => void }) {
-  const [productImage, setProductImage] = useState<string | null>(null);
-  const [productFileName, setProductFileName] = useState('');
-  const [references, setReferences] = useState<{ name: string; dataUrl: string }[]>([]);
+  /* ── 상품 이미지 (1~4) ── */
+  const [productImages, setProductImages] = useState<UploadedImage[]>([]);
+  const productRef = useRef<HTMLInputElement>(null);
+
+  /* ── 레퍼런스 이미지 + 템플릿 ── */
+  const [references, setReferences] = useState<UploadedImage[]>([]);
   const [selectedRefs, setSelectedRefs] = useState<Set<number>>(new Set());
+  const [templates, setTemplates] = useState<RefTemplate[]>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const refInputRef = useRef<HTMLInputElement>(null);
+
+  /* ── 참고 이미지 (1~4) ── */
+  const [extraImages, setExtraImages] = useState<UploadedImage[]>([]);
+  const extraRef = useRef<HTMLInputElement>(null);
+
+  /* ── 프롬프트 / 설정 ── */
   const [promptText, setPromptText] = useState('');
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [resolution, setResolution] = useState('2K');
+  const [imageCount, setImageCount] = useState(1);
+  const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
+  const [showModelPicker, setShowModelPicker] = useState(false);
+
+  /* ── 생성 결과 ── */
   const [generating, setGenerating] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [error, setError] = useState('');
-  const [previewIdx, setPreviewIdx] = useState<number | null>(null);
 
-  const productInputRef = useRef<HTMLInputElement>(null);
-  const refInputRef = useRef<HTMLInputElement>(null);
+  /* ── 뷰어 / 히스토리 ── */
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
 
-  const handleProductUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setProductFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => setProductImage(reader.result as string);
-    reader.readAsDataURL(file);
+  /* ── 템플릿 로드/저장 (localStorage + Supabase) ── */
+  const loadTemplates = useCallback(async () => {
+    try {
+      const sb = createClient();
+      const { data: { user } } = await sb.auth.getUser();
+      if (!user) return;
+      const { data } = await sb.from('image_ref_templates').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+      if (data) setTemplates(data.map((r: Record<string, unknown>) => ({ id: r.id as string, name: r.name as string, images: (r.images as { dataUrl: string; base64: string }[]) || [] })));
+    } catch {
+      const saved = localStorage.getItem('sp_ref_templates');
+      if (saved) try { setTemplates(JSON.parse(saved)); } catch { /* noop */ }
+    }
+  }, []);
+
+  const saveTemplate = async (name: string, images: UploadedImage[]) => {
+    const tmpl: RefTemplate = { id: `tmpl_${Date.now()}`, name, images };
+    const next = [tmpl, ...templates];
+    setTemplates(next);
+    localStorage.setItem('sp_ref_templates', JSON.stringify(next));
+    try {
+      const sb = createClient();
+      const { data: { user } } = await sb.auth.getUser();
+      if (user) {
+        await sb.from('image_ref_templates').insert({ id: tmpl.id, user_id: user.id, name, images });
+      }
+    } catch { /* fallback localStorage */ }
   };
 
-  const handleRefUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const deleteTemplate = async (id: string) => {
+    const next = templates.filter(t => t.id !== id);
+    setTemplates(next);
+    localStorage.setItem('sp_ref_templates', JSON.stringify(next));
+    try {
+      const sb = createClient();
+      await sb.from('image_ref_templates').delete().eq('id', id);
+    } catch { /* noop */ }
+  };
+
+  /* ── 히스토리 로드/저장 ── */
+  const loadHistory = useCallback(async () => {
+    try {
+      const sb = createClient();
+      const { data: { user } } = await sb.auth.getUser();
+      if (!user) return;
+      const { data } = await sb.from('image_gen_history').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20);
+      if (data) setHistory(data.map((r: Record<string, unknown>) => ({ id: r.id as string, prompt: r.prompt as string, model: r.model as string, images: (r.images as string[]) || [], createdAt: new Date(r.created_at as string).getTime() })));
+    } catch {
+      const saved = localStorage.getItem('sp_image_history');
+      if (saved) try { setHistory(JSON.parse(saved)); } catch { /* noop */ }
+    }
+  }, []);
+
+  const saveToHistory = async (prompt: string, model: string, images: string[]) => {
+    const item: HistoryItem = { id: `hist_${Date.now()}`, prompt, model, images, createdAt: Date.now() };
+    const next = [item, ...history].slice(0, 20);
+    setHistory(next);
+    localStorage.setItem('sp_image_history', JSON.stringify(next));
+    try {
+      const sb = createClient();
+      const { data: { user } } = await sb.auth.getUser();
+      if (user) {
+        await sb.from('image_gen_history').insert({ id: item.id, user_id: user.id, prompt, model, images, created_at: new Date().toISOString() });
+      }
+    } catch { /* noop */ }
+  };
+
+  useEffect(() => { loadTemplates(); loadHistory(); }, [loadTemplates, loadHistory]);
+
+  /* ── 파일 업로드 핸들러 ── */
+  const handleFileUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: React.Dispatch<React.SetStateAction<UploadedImage[]>>,
+    maxCount: number,
+    currentCount: number,
+  ) => {
     const files = Array.from(e.target.files || []);
-    for (const file of files) {
+    const remaining = maxCount - currentCount;
+    if (remaining <= 0) return;
+    files.slice(0, remaining).forEach(file => {
       const reader = new FileReader();
       reader.onload = () => {
-        setReferences(prev => [...prev, { name: file.name, dataUrl: reader.result as string }]);
+        const dataUrl = reader.result as string;
+        setter(prev => [...prev, { dataUrl, base64: extractBase64(dataUrl) }]);
       };
       reader.readAsDataURL(file);
-    }
-    if (refInputRef.current) refInputRef.current.value = '';
-  };
-
-  const removeRef = (idx: number) => {
-    setReferences(prev => prev.filter((_, i) => i !== idx));
-    setSelectedRefs(prev => {
-      const next = new Set<number>();
-      prev.forEach(i => { if (i < idx) next.add(i); else if (i > idx) next.add(i - 1); });
-      return next;
     });
+    e.target.value = '';
   };
 
-  const toggleRefSelect = (idx: number) => {
-    setSelectedRefs(prev => {
-      const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx); else next.add(idx);
-      return next;
-    });
-  };
-
+  /* ── 이미지 생성 ── */
   const handleGenerate = async () => {
     if (!promptText.trim()) return;
     setGenerating(true);
     setError('');
-    setGeneratedImages([]);
+    setGeneratedImages(Array.from({ length: imageCount }, () => ({ base64: '', status: 'loading' as const })));
 
-    try {
-      const extractBase64 = (dataUrl: string) => {
-        const idx = dataUrl.indexOf(',');
-        return idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl;
-      };
-
-      const productB64 = productImage ? extractBase64(productImage) : null;
-      const refB64List = Array.from(selectedRefs).map(i => {
-        const ref = references[i];
-        return ref ? extractBase64(ref.dataUrl) : '';
-      }).filter(Boolean);
-
-      const res = await fetch('/api/generate-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: promptText.trim(),
-          aspectRatio,
-          imageSize: resolution,
-          numberOfImages: Math.max(selectedRefs.size, 1),
-          productImageBase64: productB64,
-          referenceImagesBase64: refB64List,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (data.error) {
-        setError(data.error);
-      } else if (data.images && data.images.length > 0) {
-        setGeneratedImages(data.images.map((b64: string) => ({
-          base64: b64,
-          prompt: data.text || promptText,
-        })));
-      } else {
-        setError('이미지가 생성되지 않았습니다. 프롬프트를 수정해보세요.');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '이미지 생성 중 오류가 발생했습니다.');
+    const modelInfo = MODELS.find(m => m.id === selectedModel);
+    if (modelInfo && !modelInfo.available) {
+      setError(`${modelInfo.label}은 아직 연동 준비 중입니다. 다른 모델을 선택해주세요.`);
+      setGenerating(false);
+      setGeneratedImages([]);
+      return;
     }
-    setGenerating(false);
-  };
 
-  const handleDownloadZip = async () => {
-    if (generatedImages.length === 0) return;
+    const selectedRefImages = Array.from(selectedRefs).map(i => references[i]?.base64).filter(Boolean);
 
-    const { default: JSZip } = await import('jszip');
-    const zip = new JSZip();
-
-    generatedImages.forEach((img, i) => {
-      const binary = atob(img.base64);
-      const bytes = new Uint8Array(binary.length);
-      for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j);
-      zip.file(`image_${i + 1}.png`, bytes);
+    const promises = Array.from({ length: imageCount }, async (_, idx) => {
+      try {
+        const res = await fetch('/api/generate-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: promptText.trim(),
+            aspectRatio,
+            imageSize: resolution,
+            model: selectedModel,
+            productImageBase64: productImages[0]?.base64 || null,
+            productImagesBase64: productImages.map(p => p.base64),
+            referenceImagesBase64: selectedRefImages,
+            extraImagesBase64: extraImages.map(e => e.base64),
+          }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          setGeneratedImages(prev => prev.map((img, i) => i === idx ? { ...img, status: 'violation', base64: '' } : img));
+          if (idx === 0) setError(data.error);
+        } else if (data.images?.[0]) {
+          setGeneratedImages(prev => prev.map((img, i) => i === idx ? { base64: data.images[0], status: 'done' } : img));
+        } else {
+          setGeneratedImages(prev => prev.map((img, i) => i === idx ? { ...img, status: 'violation' } : img));
+        }
+      } catch {
+        setGeneratedImages(prev => prev.map((img, i) => i === idx ? { ...img, status: 'violation' } : img));
+      }
     });
 
-    const blob = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `generated_images_${Date.now()}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await Promise.all(promises);
+    setGenerating(false);
+
+    const completed = generatedImages.filter(i => i.status === 'done').map(i => i.base64);
+    if (completed.length > 0) {
+      saveToHistory(promptText, selectedModel, completed);
+    }
   };
 
+  /* ── 다운로드 ── */
   const handleDownloadSingle = (base64: string, idx: number) => {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
@@ -153,191 +234,360 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
     const blob = new Blob([bytes], { type: 'image/png' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = `image_${idx + 1}.png`;
-    a.click();
+    a.href = url; a.download = `image_${idx + 1}.png`; a.click();
     URL.revokeObjectURL(url);
   };
 
+  const handleDownloadZip = async () => {
+    const done = generatedImages.filter(i => i.status === 'done');
+    if (done.length === 0) return;
+    const { default: JSZip } = await import('jszip');
+    const zip = new JSZip();
+    done.forEach((img, i) => {
+      const binary = atob(img.base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j);
+      zip.file(`image_${i + 1}.png`, bytes);
+    });
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `generated_${Date.now()}.zip`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const curModel = MODELS.find(m => m.id === selectedModel) || MODELS[0];
+  const doneCount = generatedImages.filter(i => i.status === 'done').length;
+
+  /* ═══════════ RENDER ═══════════ */
   return (
-    <ModalShell worker={worker} onClose={onClose}>
-      <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
-        <div className="bg-gradient-to-r from-pink-900/20 to-purple-900/20 border border-pink-800/30 rounded-xl p-3 text-sm text-gray-300">
-          <span className="text-pink-400 font-bold">🎨 Nano Banana 2</span>
-          <span className="text-gray-400 ml-1">(Gemini 3.1 Flash Image)로 제품 이미지를 생성합니다.</span>
-        </div>
+    <ModalShell worker={worker} onClose={onClose} wide>
+      <div className="flex h-full" style={{ minHeight: 520 }}>
+        {/* ────── LEFT: 입력 패널 ────── */}
+        <div className="w-[420px] flex-shrink-0 border-r border-gray-800 overflow-y-auto p-4 space-y-4">
 
-        {/* Product Image Upload */}
-        <div>
-          <div className="text-xs text-gray-500 font-medium mb-1.5">📦 상품 이미지</div>
-          <div className="flex gap-3 items-start">
-            {productImage ? (
-              <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-pink-500/50 flex-shrink-0">
-                <img src={productImage} alt="product" className="w-full h-full object-cover" />
-                <button onClick={() => { setProductImage(null); setProductFileName(''); }}
-                  className="absolute top-0.5 right-0.5 w-5 h-5 bg-black/60 text-white rounded-full text-[10px] flex items-center justify-center">✕</button>
-              </div>
+          {/* 상품 이미지 (1~4) */}
+          <section>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs text-gray-400 font-medium">📦 상품 이미지 <span className="text-gray-600">({productImages.length}/4)</span></span>
+              {productImages.length < 4 && (
+                <button onClick={() => productRef.current?.click()} className="text-[10px] text-pink-400 hover:text-pink-300">+ 추가</button>
+              )}
+            </div>
+            <input ref={productRef} type="file" accept="image/*" multiple className="hidden"
+              onChange={e => handleFileUpload(e, setProductImages, 4, productImages.length)} />
+            {productImages.length === 0 ? (
+              <button onClick={() => productRef.current?.click()}
+                className="w-full py-6 border-2 border-dashed border-gray-700 hover:border-pink-500/30 rounded-xl text-gray-600 text-xs transition-colors">
+                상품 사진 업로드 (최대 4장)
+              </button>
             ) : (
-              <button onClick={() => productInputRef.current?.click()}
-                className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-700 hover:border-pink-500/50 flex items-center justify-center text-gray-600 hover:text-pink-400 transition-colors flex-shrink-0">
-                <span className="text-2xl">+</span>
-              </button>
-            )}
-            <div className="flex-1 text-xs text-gray-500">
-              {productFileName || '상품 사진을 올리면 제품 외형을 참고하여 이미지를 생성합니다.'}
-            </div>
-            <input ref={productInputRef} type="file" accept="image/*" className="hidden" onChange={handleProductUpload} />
-          </div>
-        </div>
-
-        {/* Reference Images */}
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <div className="text-xs text-gray-500 font-medium">🖼️ 레퍼런스 이미지</div>
-            <button onClick={() => refInputRef.current?.click()}
-              className="text-[10px] text-pink-400 hover:text-pink-300 transition-colors">+ 추가</button>
-          </div>
-          <input ref={refInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleRefUpload} />
-
-          {references.length === 0 ? (
-            <button onClick={() => refInputRef.current?.click()}
-              className="w-full py-4 border-2 border-dashed border-gray-700 hover:border-pink-500/30 rounded-xl text-gray-600 hover:text-pink-400 text-xs transition-colors">
-              레퍼런스 이미지를 올려주세요 (복수 선택 가능)
-            </button>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {references.map((ref, i) => (
-                <div key={i}
-                  onClick={() => toggleRefSelect(i)}
-                  className={`relative w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${
-                    selectedRefs.has(i) ? 'border-pink-500 ring-2 ring-pink-500/30' : 'border-gray-700 hover:border-gray-500'
-                  }`}>
-                  <img src={ref.dataUrl} alt={ref.name} className="w-full h-full object-cover" />
-                  {selectedRefs.has(i) && (
-                    <div className="absolute inset-0 bg-pink-500/20 flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">✓</span>
+              <div className="flex gap-2 flex-wrap">
+                {productImages.map((img, i) => (
+                  <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-pink-500/40 group cursor-pointer"
+                    onClick={() => setZoomSrc(img.dataUrl)}>
+                    <img src={img.dataUrl} alt="" className="w-full h-full object-cover" />
+                    <button onClick={e => { e.stopPropagation(); setProductImages(prev => prev.filter((_, j) => j !== i)); }}
+                      className="absolute top-0.5 right-0.5 w-4 h-4 bg-black/70 text-white rounded-full text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                      <span className="text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">🔍</span>
                     </div>
-                  )}
-                  <button onClick={e => { e.stopPropagation(); removeRef(i); }}
-                    className="absolute top-0.5 right-0.5 w-4 h-4 bg-black/60 text-white rounded-full text-[8px] flex items-center justify-center">✕</button>
-                </div>
-              ))}
-            </div>
-          )}
-          {references.length > 0 && (
-            <p className="text-[10px] text-gray-600 mt-1">
-              클릭하여 선택 ({selectedRefs.size}개 선택됨) — 선택한 레퍼런스 스타일을 참고하여 생성
-            </p>
-          )}
-        </div>
-
-        {/* Prompt */}
-        <textarea value={promptText} onChange={e => setPromptText(e.target.value)}
-          placeholder="생성할 이미지를 설명해주세요 (예: 흰색 배경 위에 놓인 프리미엄 화장품 패키지, 부드러운 조명, 미니멀한 스타일)"
-          rows={3}
-          className="w-full bg-gray-800 text-white placeholder-gray-500 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-pink-500/50 border border-gray-700" />
-
-        {/* Aspect Ratio + Resolution */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <div className="text-xs text-gray-500 font-medium mb-1.5">📐 이미지 비율</div>
-            <div className="flex gap-1.5">
-              {ASPECT_RATIOS.map(r => (
-                <button key={r.value} onClick={() => setAspectRatio(r.value)}
-                  className={`flex-1 px-2 py-2 rounded-lg text-[11px] transition-colors ${
-                    aspectRatio === r.value ? 'bg-pink-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                  }`}>
-                  {r.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="text-xs text-gray-500 font-medium mb-1.5">📏 해상도</div>
-            <div className="flex gap-1.5">
-              {RESOLUTIONS.map(r => (
-                <button key={r.value} onClick={() => setResolution(r.value)}
-                  className={`flex-1 px-2 py-2 rounded-lg text-[11px] transition-colors ${
-                    resolution === r.value ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                  }`}>
-                  {r.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Generate Button */}
-        <button onClick={handleGenerate} disabled={generating || !promptText.trim()}
-          className="w-full px-4 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white rounded-xl text-sm font-medium transition-all">
-          {generating ? '🔄 이미지 생성 중...' : '🎨 이미지 생성 (Nano Banana 2)'}
-        </button>
-
-        {error && (
-          <div className="bg-red-900/20 border border-red-700/30 rounded-xl p-3 text-red-400 text-xs">{error}</div>
-        )}
-
-        {/* Generated Images Preview */}
-        {generatedImages.length > 0 && (
-          <div>
-            {generatedImages[0]?.prompt && generatedImages[0].prompt !== promptText && (
-              <details className="mb-2">
-                <summary className="text-[10px] text-gray-500 cursor-pointer hover:text-gray-300">AI가 분석한 프롬프트 보기</summary>
-                <p className="text-[10px] text-gray-600 bg-gray-800/50 rounded-lg p-2 mt-1 leading-relaxed">{generatedImages[0].prompt}</p>
-              </details>
-            )}
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-xs text-gray-400 font-medium">생성된 이미지 ({generatedImages.length}장)</div>
-              <button onClick={handleDownloadZip}
-                className="text-xs bg-green-600/20 text-green-400 px-3 py-1.5 rounded-lg hover:bg-green-600/30 transition-colors font-medium">
-                📦 ZIP 다운로드
-              </button>
-            </div>
-            <div className="grid grid-cols-4 gap-2">
-              {generatedImages.map((img, i) => (
-                <div key={i}
-                  onClick={() => setPreviewIdx(i)}
-                  className="relative aspect-square rounded-lg overflow-hidden border border-gray-700 cursor-pointer hover:border-pink-500 transition-colors group">
-                  <img src={`data:image/png;base64,${img.base64}`} alt={`Generated ${i + 1}`} className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                    <span className="opacity-0 group-hover:opacity-100 text-white text-xs font-medium transition-opacity">🔍 확대</span>
                   </div>
-                  <button onClick={e => { e.stopPropagation(); handleDownloadSingle(img.base64, i); }}
-                    className="absolute bottom-1 right-1 w-6 h-6 bg-black/60 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    ⬇
-                  </button>
-                </div>
+                ))}
+                {productImages.length < 4 && (
+                  <button onClick={() => productRef.current?.click()}
+                    className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-700 hover:border-pink-500/40 flex items-center justify-center text-gray-600 hover:text-pink-400 transition-colors text-lg">+</button>
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* 레퍼런스 이미지 */}
+          <section>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs text-gray-400 font-medium">🖼️ 레퍼런스 이미지</span>
+              <div className="flex gap-2">
+                <button onClick={() => setShowTemplates(!showTemplates)} className="text-[10px] text-violet-400 hover:text-violet-300">+ 템플릿</button>
+                <button onClick={() => refInputRef.current?.click()} className="text-[10px] text-pink-400 hover:text-pink-300">+ 추가</button>
+              </div>
+            </div>
+            <input ref={refInputRef} type="file" accept="image/*" multiple className="hidden"
+              onChange={e => handleFileUpload(e, setReferences, 14, references.length)} />
+
+            {/* 템플릿 패널 */}
+            {showTemplates && (
+              <div className="bg-gray-800/80 border border-gray-700 rounded-xl p-3 mb-2 space-y-2">
+                <div className="text-[11px] text-gray-300 font-medium">저장된 템플릿</div>
+                {templates.length === 0 && <p className="text-[10px] text-gray-600">저장된 템플릿이 없습니다.</p>}
+                {templates.map(t => (
+                  <div key={t.id} className="flex items-center gap-2 bg-gray-900/50 rounded-lg p-2">
+                    <div className="flex gap-1 flex-1 overflow-x-auto">
+                      {t.images.slice(0, 3).map((img, i) => (
+                        <img key={i} src={img.dataUrl} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                      ))}
+                      {t.images.length > 3 && <span className="text-[10px] text-gray-500 self-center">+{t.images.length - 3}</span>}
+                    </div>
+                    <span className="text-[11px] text-gray-300 truncate flex-shrink-0 max-w-[80px]">{t.name}</span>
+                    <button onClick={() => { setReferences(t.images); setSelectedRefs(new Set(t.images.map((_, i) => i))); setShowTemplates(false); }}
+                      className="text-[10px] text-green-400 hover:text-green-300 flex-shrink-0">적용</button>
+                    <button onClick={() => deleteTemplate(t.id)}
+                      className="text-[10px] text-red-400 hover:text-red-300 flex-shrink-0">삭제</button>
+                  </div>
+                ))}
+                {references.length > 0 && (
+                  <div className="flex gap-2 items-center mt-2">
+                    <input value={newTemplateName} onChange={e => setNewTemplateName(e.target.value)} placeholder="템플릿 이름"
+                      className="flex-1 bg-gray-900 text-white text-[11px] rounded-lg px-2 py-1.5 border border-gray-700 focus:border-violet-500 focus:outline-none" />
+                    <button onClick={() => { if (newTemplateName.trim()) { saveTemplate(newTemplateName.trim(), references); setNewTemplateName(''); } }}
+                      className="text-[10px] bg-violet-600 text-white px-2 py-1.5 rounded-lg hover:bg-violet-500 flex-shrink-0">현재 레퍼런스 저장</button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {references.length === 0 ? (
+              <button onClick={() => refInputRef.current?.click()}
+                className="w-full py-4 border-2 border-dashed border-gray-700 hover:border-pink-500/30 rounded-xl text-gray-600 text-xs transition-colors">
+                레퍼런스 이미지 업로드
+              </button>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {references.map((ref, i) => (
+                  <div key={i} onClick={() => { const s = new Set(selectedRefs); if (s.has(i)) s.delete(i); else s.add(i); setSelectedRefs(s); }}
+                    className={`relative w-14 h-14 rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${
+                      selectedRefs.has(i) ? 'border-pink-500 ring-1 ring-pink-500/30' : 'border-gray-700'
+                    }`}>
+                    <img src={ref.dataUrl} alt="" className="w-full h-full object-cover" />
+                    {selectedRefs.has(i) && <div className="absolute inset-0 bg-pink-500/20 flex items-center justify-center"><span className="text-white text-[10px] font-bold">✓</span></div>}
+                    <button onClick={e => { e.stopPropagation(); setReferences(prev => prev.filter((_, j) => j !== i)); setSelectedRefs(prev => { const n = new Set<number>(); prev.forEach(x => { if (x < i) n.add(x); else if (x > i) n.add(x - 1); }); return n; }); }}
+                      className="absolute top-0 right-0 w-3.5 h-3.5 bg-black/70 text-white rounded-full text-[7px] flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {references.length > 0 && <p className="text-[9px] text-gray-600 mt-1">클릭하여 선택 ({selectedRefs.size}개)</p>}
+          </section>
+
+          {/* 참고 이미지 (번호 부여) */}
+          <section>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs text-gray-400 font-medium">📎 참고 이미지 <span className="text-gray-600">({extraImages.length}/4)</span></span>
+              {extraImages.length < 4 && (
+                <button onClick={() => extraRef.current?.click()} className="text-[10px] text-cyan-400 hover:text-cyan-300">+ 추가</button>
+              )}
+            </div>
+            <input ref={extraRef} type="file" accept="image/*" multiple className="hidden"
+              onChange={e => handleFileUpload(e, setExtraImages, 4, extraImages.length)} />
+            {extraImages.length === 0 ? (
+              <button onClick={() => extraRef.current?.click()}
+                className="w-full py-3 border-2 border-dashed border-gray-700 hover:border-cyan-500/30 rounded-xl text-gray-600 text-[11px] transition-colors">
+                참고 이미지 업로드 → 프롬프트에서 &apos;참고 이미지 N번&apos;으로 지칭
+              </button>
+            ) : (
+              <div className="flex gap-2 flex-wrap">
+                {extraImages.map((img, i) => (
+                  <div key={i} className="relative group cursor-pointer" onClick={() => setZoomSrc(img.dataUrl)}>
+                    <div className="w-14 h-14 rounded-lg overflow-hidden border border-cyan-500/40">
+                      <img src={img.dataUrl} alt="" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-cyan-600 text-white text-[8px] px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap">{i + 1}번</div>
+                    <button onClick={e => { e.stopPropagation(); setExtraImages(prev => prev.filter((_, j) => j !== i)); }}
+                      className="absolute top-0 right-0 w-3.5 h-3.5 bg-black/70 text-white rounded-full text-[7px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* 프롬프트 */}
+          <section>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs text-gray-400 font-medium">✏️ 프롬프트</span>
+            </div>
+            <div className="flex gap-1.5 mb-2 flex-wrap">
+              {PROMPT_TEMPLATES.map((t, i) => (
+                <button key={i} onClick={() => setPromptText(t.text)}
+                  className="text-[10px] bg-gray-800 text-gray-400 px-2 py-1 rounded-lg hover:bg-gray-700 hover:text-white transition-colors border border-gray-700 truncate max-w-[180px]">
+                  {t.label}
+                </button>
               ))}
             </div>
-          </div>
-        )}
+            <textarea value={promptText} onChange={e => setPromptText(e.target.value)}
+              placeholder="생성할 이미지를 설명해주세요..."
+              rows={3}
+              className="w-full bg-gray-800 text-white placeholder-gray-600 rounded-xl px-3 py-2.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-pink-500/50 border border-gray-700" />
+          </section>
 
-        {/* Full Preview Modal */}
-        {previewIdx !== null && generatedImages[previewIdx] && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80"
-            onClick={() => setPreviewIdx(null)}>
-            <div className="max-w-3xl max-h-[90vh] relative" onClick={e => e.stopPropagation()}>
-              <img src={`data:image/png;base64,${generatedImages[previewIdx].base64}`} alt="Preview"
-                className="max-w-full max-h-[85vh] rounded-xl" />
-              <div className="absolute top-2 right-2 flex gap-2">
-                <button onClick={() => handleDownloadSingle(generatedImages[previewIdx!].base64, previewIdx!)}
-                  className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium">⬇ 저장</button>
-                <button onClick={() => setPreviewIdx(null)}
-                  className="px-3 py-1.5 bg-gray-800 text-white rounded-lg text-xs">✕</button>
+          {/* 설정: 비율 / 해상도 / 매수 */}
+          <section className="grid grid-cols-3 gap-2">
+            <div>
+              <div className="text-[10px] text-gray-500 mb-1">비율</div>
+              <div className="flex flex-col gap-1">
+                {ASPECT_RATIOS.map(r => (
+                  <button key={r} onClick={() => setAspectRatio(r)}
+                    className={`px-2 py-1.5 rounded-lg text-[10px] transition-colors ${aspectRatio === r ? 'bg-pink-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                    {r}
+                  </button>
+                ))}
               </div>
-              {generatedImages.length > 1 && (
-                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-2">
-                  <button disabled={previewIdx === 0} onClick={() => setPreviewIdx(i => (i ?? 1) - 1)}
-                    className="px-3 py-1.5 bg-gray-800 text-white rounded-lg text-xs disabled:opacity-30">← 이전</button>
-                  <span className="px-3 py-1.5 text-white text-xs">{previewIdx + 1} / {generatedImages.length}</span>
-                  <button disabled={previewIdx === generatedImages.length - 1} onClick={() => setPreviewIdx(i => (i ?? 0) + 1)}
-                    className="px-3 py-1.5 bg-gray-800 text-white rounded-lg text-xs disabled:opacity-30">다음 →</button>
+            </div>
+            <div>
+              <div className="text-[10px] text-gray-500 mb-1">해상도</div>
+              <div className="flex flex-col gap-1">
+                {RESOLUTIONS.map(r => (
+                  <button key={r} onClick={() => setResolution(r)}
+                    className={`px-2 py-1.5 rounded-lg text-[10px] transition-colors ${resolution === r ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-gray-500 mb-1">매수</div>
+              <div className="flex flex-col gap-1">
+                {IMAGE_COUNTS.map(c => (
+                  <button key={c} onClick={() => setImageCount(c)}
+                    className={`px-2 py-1.5 rounded-lg text-[10px] transition-colors ${imageCount === c ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                    {c}장
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* 모델 선택 + 생성 버튼 */}
+          <section className="flex gap-2">
+            <div className="relative">
+              <button onClick={() => setShowModelPicker(!showModelPicker)}
+                className="h-full px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-xl text-[11px] text-gray-300 hover:bg-gray-700 transition-colors flex items-center gap-1.5 min-w-[130px]">
+                <span className="text-violet-400 font-medium">{curModel.label}</span>
+                <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {showModelPicker && (
+                <div className="absolute bottom-full left-0 mb-1 w-56 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-10 overflow-hidden">
+                  {MODELS.map(m => (
+                    <button key={m.id} onClick={() => { setSelectedModel(m.id); setShowModelPicker(false); }}
+                      className={`w-full px-3 py-2.5 text-left flex items-center gap-2 transition-colors ${
+                        selectedModel === m.id ? 'bg-violet-600/20 text-violet-300' : 'hover:bg-gray-800 text-gray-300'
+                      } ${!m.available ? 'opacity-50' : ''}`}>
+                      <span className="text-xs font-medium flex-1">{m.label}</span>
+                      {m.tag && <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                        m.available ? 'bg-violet-600/30 text-violet-300' : 'bg-gray-700 text-gray-500'
+                      }`}>{m.tag}</span>}
+                      {!m.available && <span className="text-[9px] text-gray-600">준비중</span>}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
+            <button onClick={handleGenerate} disabled={generating || !promptText.trim()}
+              className="flex-1 px-4 py-2.5 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white rounded-xl text-xs font-medium transition-all">
+              {generating ? '🔄 생성 중...' : `🎨 이미지 생성 (${imageCount}장)`}
+            </button>
+          </section>
+
+          {error && <div className="bg-red-900/20 border border-red-700/30 rounded-xl p-2.5 text-red-400 text-[11px]">{error}</div>}
+        </div>
+
+        {/* ────── RIGHT: 프리뷰 패널 ────── */}
+        <div className="flex-1 overflow-y-auto bg-gray-950/50 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs text-gray-400 font-medium">🖼️ 프리뷰</span>
+            <div className="flex gap-2">
+              {doneCount > 0 && (
+                <button onClick={handleDownloadZip} className="text-[10px] bg-green-600/20 text-green-400 px-2.5 py-1 rounded-lg hover:bg-green-600/30 transition-colors">📦 ZIP</button>
+              )}
+              <button onClick={() => setShowHistory(!showHistory)}
+                className={`text-[10px] px-2.5 py-1 rounded-lg transition-colors ${showHistory ? 'bg-violet-600/20 text-violet-400' : 'bg-gray-800 text-gray-500 hover:text-gray-300'}`}>
+                📋 히스토리
+              </button>
+            </div>
           </div>
-        )}
+
+          {/* 히스토리 */}
+          {showHistory && (
+            <div className="mb-4 space-y-2">
+              <div className="text-[10px] text-gray-500 font-medium">최근 생성 기록</div>
+              {history.length === 0 && <p className="text-[10px] text-gray-600">기록이 없습니다.</p>}
+              {history.map(h => (
+                <div key={h.id} className="bg-gray-900/80 border border-gray-800 rounded-lg p-2 flex gap-2">
+                  <div className="flex gap-1 flex-shrink-0">
+                    {h.images.slice(0, 2).map((b64, i) => (
+                      <img key={i} src={`data:image/png;base64,${b64}`} alt="" className="w-10 h-10 rounded object-cover cursor-pointer"
+                        onClick={() => setZoomSrc(`data:image/png;base64,${b64}`)} />
+                    ))}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] text-gray-300 truncate">{h.prompt}</p>
+                    <p className="text-[9px] text-gray-600">{new Date(h.createdAt).toLocaleDateString('ko-KR')} · {h.images.length}장</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 생성된 이미지 / 로딩 */}
+          {generatedImages.length > 0 ? (
+            <div className={`grid gap-3 ${generatedImages.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+              {generatedImages.map((img, i) => (
+                <div key={i} className="relative aspect-square bg-gray-900 rounded-xl overflow-hidden border border-gray-800">
+                  {img.status === 'loading' && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                      <div className="relative w-16 h-16">
+                        <div className="absolute inset-0 rounded-full border-2 border-pink-500/20" />
+                        <div className="absolute inset-0 rounded-full border-2 border-t-pink-500 animate-spin" />
+                        <div className="absolute inset-2 rounded-full border-2 border-t-purple-400 animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }} />
+                      </div>
+                      <div className="text-[11px] text-gray-400 animate-pulse">이미지 생성 중...</div>
+                      <div className="w-32 h-1 bg-gray-800 rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-pink-500 to-purple-500 rounded-full animate-progress" />
+                      </div>
+                    </div>
+                  )}
+                  {img.status === 'done' && (
+                    <div className="group cursor-pointer h-full" onClick={() => setZoomSrc(`data:image/png;base64,${img.base64}`)}>
+                      <img src={`data:image/png;base64,${img.base64}`} alt={`Generated ${i + 1}`} className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                        <span className="opacity-0 group-hover:opacity-100 text-white text-xs font-medium transition-opacity">🔍 확대</span>
+                      </div>
+                      <button onClick={e => { e.stopPropagation(); handleDownloadSingle(img.base64, i); }}
+                        className="absolute bottom-2 right-2 w-7 h-7 bg-black/60 text-white rounded-full text-[11px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80">⬇</button>
+                    </div>
+                  )}
+                  {img.status === 'violation' && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-red-950/30">
+                      <div className="w-12 h-12 rounded-full bg-red-900/50 flex items-center justify-center">
+                        <span className="text-2xl">🚫</span>
+                      </div>
+                      <span className="text-red-400 text-[11px] font-medium">위반된 이미지</span>
+                      <span className="text-red-500/60 text-[9px]">안전 정책에 의해 차단됨</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-64 text-gray-700">
+              <div className="text-4xl mb-3">🎨</div>
+              <p className="text-xs">이미지를 생성하면 여기에 표시됩니다</p>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* 이미지 확대 뷰어 */}
+      {zoomSrc && <ImageZoom src={zoomSrc} onClose={() => setZoomSrc(null)} />}
+
+      <style jsx>{`
+        @keyframes progress {
+          0% { width: 0%; }
+          50% { width: 70%; }
+          100% { width: 95%; }
+        }
+        .animate-progress {
+          animation: progress 8s ease-out forwards;
+        }
+      `}</style>
     </ModalShell>
   );
 }
