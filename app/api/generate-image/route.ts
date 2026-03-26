@@ -25,31 +25,37 @@ export async function POST(req: NextRequest) {
     }
 
     const parts: Record<string, unknown>[] = [];
-    parts.push({ text: prompt || '이 상품의 고퀄리티 제품 이미지를 생성해주세요.' });
 
-    const allProductImages = productImagesBase64?.length ? productImagesBase64 : (productImageBase64 ? [productImageBase64] : []);
-    if (allProductImages.length > 0) {
-      parts.push({ text: '\n[상품 이미지]:' });
-      for (const b64 of allProductImages) {
-        if (b64) parts.push({ inlineData: { mimeType: 'image/png', data: b64 } });
+    const allProductImages: string[] = (productImagesBase64?.length ? productImagesBase64 : (productImageBase64 ? [productImageBase64] : [])).filter(Boolean);
+    const refImages: string[] = (referenceImagesBase64 || []).filter(Boolean);
+    const extras: string[] = (extraImagesBase64 || []).filter(Boolean);
+
+    if (allProductImages.length > 1) {
+      parts.push({ text: `아래 ${allProductImages.length}장의 상품 이미지는 모두 동일한 제품을 다양한 각도에서 촬영한 것입니다. 이 이미지들을 종합적으로 분석하여 제품의 형태, 색상, 질감, 로고, 디자인 디테일을 완전히 파악한 후, 그 제품을 정확하게 반영한 새로운 이미지를 생성하세요.\n\n` });
+      for (let i = 0; i < allProductImages.length; i++) {
+        parts.push({ text: `[상품 이미지 ${i + 1}/${allProductImages.length}]:` });
+        parts.push({ inlineData: { mimeType: 'image/jpeg', data: allProductImages[i] } });
+      }
+    } else if (allProductImages.length === 1) {
+      parts.push({ text: '[상품 이미지 - 이 제품의 외형을 정확히 반영하세요]:' });
+      parts.push({ inlineData: { mimeType: 'image/jpeg', data: allProductImages[0] } });
+    }
+
+    if (refImages.length > 0) {
+      parts.push({ text: '\n[레퍼런스 이미지 - 아래 이미지의 스타일, 구도, 분위기, 배경을 참고하여 위 상품을 배치하세요]:' });
+      for (const b64 of refImages) {
+        parts.push({ inlineData: { mimeType: 'image/jpeg', data: b64 } });
       }
     }
 
-    if (referenceImagesBase64?.length > 0) {
-      parts.push({ text: '\n[레퍼런스 이미지 - 스타일/구도/분위기 참고]:' });
-      for (const b64 of referenceImagesBase64) {
-        if (b64) parts.push({ inlineData: { mimeType: 'image/png', data: b64 } });
+    if (extras.length > 0) {
+      for (let i = 0; i < extras.length; i++) {
+        parts.push({ text: `\n[참고 이미지 ${i + 1}번]:` });
+        parts.push({ inlineData: { mimeType: 'image/jpeg', data: extras[i] } });
       }
     }
 
-    if (extraImagesBase64?.length > 0) {
-      for (let i = 0; i < extraImagesBase64.length; i++) {
-        if (extraImagesBase64[i]) {
-          parts.push({ text: `\n[참고 이미지 ${i + 1}번]:` });
-          parts.push({ inlineData: { mimeType: 'image/png', data: extraImagesBase64[i] } });
-        }
-      }
-    }
+    parts.push({ text: `\n\n사용자 요청: ${prompt || '이 상품의 고퀄리티 제품 이미지를 생성해주세요.'}` });
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
 
