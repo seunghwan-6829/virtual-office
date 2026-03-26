@@ -11,8 +11,9 @@ const ASPECT_RATIOS = [
 ];
 
 const RESOLUTIONS = [
-  { label: '2K (표준)', value: '2K' },
-  { label: '1K (빠른 생성)', value: '1K' },
+  { label: '4K', value: '4K' },
+  { label: '2K', value: '2K' },
+  { label: '1K', value: '1K' },
 ];
 
 interface GeneratedImage {
@@ -112,7 +113,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
       } else if (data.images && data.images.length > 0) {
         setGeneratedImages(data.images.map((b64: string) => ({
           base64: b64,
-          prompt: data.generatedPrompt || promptText,
+          prompt: data.text || promptText,
         })));
       } else {
         setError('이미지가 생성되지 않았습니다. 프롬프트를 수정해보세요.');
@@ -162,8 +163,8 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
     <ModalShell worker={worker} onClose={onClose}>
       <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
         <div className="bg-gradient-to-r from-pink-900/20 to-purple-900/20 border border-pink-800/30 rounded-xl p-3 text-sm text-gray-300">
-          <span className="text-pink-400 font-bold">🎨 Imagen 4</span>
-          <span className="text-gray-400 ml-1">로 상세페이지용 제품 이미지를 생성합니다.</span>
+          <span className="text-pink-400 font-bold">🎨 Nano Banana 2</span>
+          <span className="text-gray-400 ml-1">(Gemini 3.1 Flash Image)로 제품 이미지를 생성합니다.</span>
         </div>
 
         {/* Product Image Upload */}
@@ -269,7 +270,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
         {/* Generate Button */}
         <button onClick={handleGenerate} disabled={generating || !promptText.trim()}
           className="w-full px-4 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white rounded-xl text-sm font-medium transition-all">
-          {generating ? '🔄 이미지 생성 중...' : '🎨 이미지 생성 (Imagen 4)'}
+          {generating ? '🔄 이미지 생성 중...' : '🎨 이미지 생성 (Nano Banana 2)'}
         </button>
 
         {error && (
