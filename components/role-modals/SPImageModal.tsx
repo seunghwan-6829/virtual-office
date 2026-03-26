@@ -575,7 +575,7 @@ export default function SPImageModal({ worker, onClose }: { worker: Worker; onCl
           prompt: reqPrompt,
           aspectRatio,
           imageSize: resolution,
-          model: selectedModel,
+          model: 'gemini-3-pro-image-preview',
           productImagesBase64: [],
           referenceImagesBase64: [srcBase64],
           extraImagesBase64: [],
