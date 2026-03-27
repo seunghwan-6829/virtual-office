@@ -406,37 +406,51 @@ async function callLLMStreaming(
 ): Promise<string> {
   const effectiveMax = maxTokens ?? 16384;
 
-  const MAX_API_RETRIES = 5;
+  const MAX_API_RETRIES = 6;
 
   async function singleCallOnce(prompt: string, tokens: number): Promise<string> {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        instruction: prompt,
-        role: worker.role,
-        roleKey: worker.roleKey,
-        model: worker.model,
-        provider: worker.provider,
-        maxTokens: tokens,
-      }),
-    });
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      throw new Error(`HTTP ${res.status}: ${errText.slice(0, 200)}`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120_000);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instruction: prompt,
+          role: worker.role,
+          roleKey: worker.roleKey,
+          model: worker.model,
+          provider: worker.provider,
+          maxTokens: tokens,
+        }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}: ${errText.slice(0, 300)}`);
+      }
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response body');
+      const dec = new TextDecoder();
+      let out = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = dec.decode(value, { stream: true });
+        out += chunk;
+        onChunk?.(out);
+      }
+      return out;
+    } finally {
+      clearTimeout(timeout);
     }
-    const reader = res.body?.getReader();
-    if (!reader) throw new Error('No response body');
-    const dec = new TextDecoder();
-    let out = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = dec.decode(value, { stream: true });
-      out += chunk;
-      onChunk?.(out);
-    }
-    return out;
+  }
+
+  function isRetryable(msg: string): boolean {
+    return msg.includes('Overloaded') || msg.includes('529') || msg.includes('504')
+      || msg.includes('503') || msg.includes('rate') || msg.includes('TIMEOUT')
+      || msg.includes('timeout') || msg.includes('abort') || msg.includes('FUNCTION_INVOCATION');
   }
 
   async function singleCall(prompt: string, tokens: number): Promise<string> {
@@ -445,10 +459,9 @@ async function callLLMStreaming(
         return await singleCallOnce(prompt, tokens);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        const isOverloaded = msg.includes('Overloaded') || msg.includes('529') || msg.includes('rate') || msg.includes('503');
-        if (isOverloaded && attempt < MAX_API_RETRIES - 1) {
-          const waitSec = Math.pow(2, attempt + 1) * 3;
-          onChunk?.(`[서버 과부하] ${waitSec}초 후 재시도합니다... (${attempt + 1}/${MAX_API_RETRIES})`);
+        if (isRetryable(msg) && attempt < MAX_API_RETRIES - 1) {
+          const waitSec = Math.min(10 + attempt * 10, 60);
+          onChunk?.(`[서버 과부하/타임아웃] ${waitSec}초 후 재시도합니다... (${attempt + 1}/${MAX_API_RETRIES})`);
           await new Promise(r => setTimeout(r, waitSec * 1000));
           continue;
         }

@@ -5,6 +5,7 @@ import { getRoleSystemPrompt } from '@/lib/role-prompts';
 import { RoleKey } from '@/lib/types';
 
 export const runtime = 'edge';
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   try {
@@ -27,15 +28,16 @@ export async function POST(req: Request) {
       system: systemPrompt,
       prompt,
       maxTokens: Number(maxTokens) || 16384,
-      maxRetries: 8,
+      maxRetries: 2,
     });
 
     return result.toTextStreamResponse();
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
+    const isOverloaded = message.includes('Overloaded') || message.includes('529') || message.includes('rate');
     return new Response(
-      JSON.stringify({ error: message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } },
+      JSON.stringify({ error: message, overloaded: isOverloaded }),
+      { status: isOverloaded ? 529 : 500, headers: { 'Content-Type': 'application/json' } },
     );
   }
 }
