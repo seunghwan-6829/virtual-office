@@ -17,8 +17,9 @@ function buildFullText(
   workers: ReturnType<typeof useOfficeStore.getState>['workers'],
 ) {
   if (!project) return '';
-  const spPhases = project.phases.filter(p => p.team === 'sp' && (!p.abVariant || p.abVariant === 'A'));
-  const daPhases = project.phases.filter(p => p.team === 'da' && (!p.abVariant || p.abVariant === 'A'));
+  const mainPhases = project.phases
+    .filter(p => !p.abVariant || p.abVariant === 'A')
+    .sort((a, b) => a.order - b.order);
   const abPhases = project.phases.filter(p => p.abVariant === 'B');
 
   const sections: string[] = [
@@ -30,21 +31,12 @@ function buildFullText(
     '',
     '',
     '═══════════════════════════════════════',
-    '        상세페이지 팀 상세 결과',
+    '        파이프라인 상세 결과',
     '═══════════════════════════════════════',
     '',
-    ...spPhases.map(p => {
+    ...mainPhases.map(p => {
       const w = workers.find(v => v.id === p.workerId);
-      return `── ${w?.name} (${w?.title}) ──\n\n${p.result}\n`;
-    }),
-    '',
-    '═══════════════════════════════════════',
-    '        DA 팀 상세 결과',
-    '═══════════════════════════════════════',
-    '',
-    ...daPhases.map(p => {
-      const w = workers.find(v => v.id === p.workerId);
-      return `── ${w?.name} (${w?.title}) ──\n\n${p.result}\n`;
+      return `── [순서${p.order}] ${w?.name} (${w?.title}) ──\n\n${p.result}\n`;
     }),
   ];
 
@@ -165,20 +157,24 @@ function markdownToHTML(md: string): string {
 
 export default function FinalReportModal() {
   const modal = useOfficeStore(s => s.modal);
+  const currentFloor = useOfficeStore(s => s.currentFloor);
   const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.floor2Project);
   const workers = useOfficeStore(s => s.workers);
   const closeModal = useOfficeStore(s => s.closeModal);
   const reviewProject = useOfficeStore(s => s.currentFloor === 1 ? s.reviewProject : s.reviewFloor2Project);
-  const [tab, setTab] = useState<'report' | 'sp' | 'da' | 'ab' | 'log'>('report');
+  const [tab, setTab] = useState<'report' | 'pipeline' | 'ab' | 'log'>('report');
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
 
   if (modal.type !== 'finalReport' || !project) return null;
 
-  const spPhases = project.phases.filter(p => p.team === 'sp' && (!p.abVariant || p.abVariant === 'A'));
-  const daPhases = project.phases.filter(p => p.team === 'da' && (!p.abVariant || p.abVariant === 'A'));
+  const isFloor2 = currentFloor === 2;
+  const mainPhases = project.phases
+    .filter(p => !p.abVariant || p.abVariant === 'A')
+    .sort((a, b) => a.order - b.order);
   const abPhases = project.phases.filter(p => p.abVariant === 'B');
   const dur = project.completedAt ? Math.round((project.completedAt - project.createdAt) / 1000) : 0;
+  const agentCount = new Set(project.phases.map(p => p.workerId)).size;
 
   const handleExportTXT = () => {
     const text = buildFullText(project, workers);
@@ -187,13 +183,10 @@ export default function FinalReportModal() {
 
   const handleExportPDF = () => {
     const report = project.finalReport ?? '';
-    const spHtml = spPhases.map(p => {
+    const pipelineHtml = mainPhases.map(p => {
       const w = workers.find(v => v.id === p.workerId);
-      return `<h2>${w?.name} (${w?.title})</h2>${markdownToHTML(p.result || '')}`;
-    }).join('<hr/>');
-    const daHtml = daPhases.map(p => {
-      const w = workers.find(v => v.id === p.workerId);
-      return `<h2>${w?.name} (${w?.title})</h2>${markdownToHTML(p.result || '')}`;
+      const variantLabel = p.abVariant ? ` (${p.abVariant}안)` : '';
+      return `<h2>[순서${p.order}] ${w?.name} (${w?.title})${variantLabel}</h2>${markdownToHTML(p.result || '')}`;
     }).join('<hr/>');
 
     let abHtml = '';
@@ -209,11 +202,8 @@ export default function FinalReportModal() {
       <h1>최종 프로젝트 보고서</h1>
       ${markdownToHTML(report)}
       <div class="section-divider"></div>
-      <h1>상세페이지 팀 상세 결과</h1>
-      ${spHtml}
-      <div class="section-divider"></div>
-      <h1>DA 팀 상세 결과</h1>
-      ${daHtml}
+      <h1>파이프라인 상세 결과</h1>
+      ${pipelineHtml}
       ${abHtml}
     `;
 
@@ -227,8 +217,7 @@ export default function FinalReportModal() {
 
   const TABS: [typeof tab, string][] = [
     ['report', '📝 종합 보고서'],
-    ['sp', '📄 상세페이지'],
-    ['da', '📊 DA'],
+    ['pipeline', isFloor2 ? '🖼️ AI 제작 결과' : '📄 파이프라인 결과'],
     ...(abPhases.length > 0 ? [['ab' as const, '🔀 A/B 비교'] as [typeof tab, string]] : []),
     ['log', '💬 대화 로그'],
   ];
@@ -241,7 +230,7 @@ export default function FinalReportModal() {
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-lg">📋</div>
           <div className="flex-1">
             <h3 className="text-white font-bold">최종 프로젝트 보고서</h3>
-            <div className="text-xs text-gray-400">총 소요시간: {dur}초 · 에이전트 8명 · {project.messages.length}건 대화</div>
+            <div className="text-xs text-gray-400">총 소요시간: {dur}초 · 에이전트 {agentCount}명 · {project.messages.length}건 대화</div>
           </div>
           <div className="flex gap-1.5">
             <button onClick={handleCopy} title="전체 복사"
@@ -271,47 +260,37 @@ export default function FinalReportModal() {
             </div>
           )}
 
-          {tab === 'sp' && (
+          {tab === 'pipeline' && (
             <div className="space-y-6">
-              {spPhases.map(phase => {
+              {mainPhases.map(phase => {
                 const w = workers.find(v => v.id === phase.workerId);
+                const variantLabel = phase.abVariant ? ` (${phase.abVariant}안)` : '';
+                const hasResult = phase.result && phase.result.trim().length > 0;
+                const isError = phase.result?.startsWith('[API 오류]') || phase.result?.startsWith('[순서');
                 return (
-                  <div key={phase.id} className="border border-gray-700 rounded-xl overflow-hidden">
+                  <div key={phase.id} className={`border rounded-xl overflow-hidden ${
+                    isError ? 'border-red-700/50' : 'border-gray-700'
+                  }`}>
                     <div className="bg-gray-800 px-4 py-3 flex items-center gap-2">
                       {w && (
                         <div className="w-8 h-8 rounded-full overflow-hidden border" style={{ borderColor: getCharColor(w.charId) }}>
                           <img src={`/sprites/characters/CH_${w.charId}_Front.png`} alt="" className="w-full h-full object-cover" />
                         </div>
                       )}
-                      <span className="text-white font-bold text-sm">{w?.name}</span>
+                      <span className="text-white font-bold text-sm">{w?.name}{variantLabel}</span>
                       <span className="text-gray-400 text-xs">{w?.title}</span>
+                      <span className={`ml-auto text-[10px] px-2 py-0.5 rounded-full ${
+                        isError ? 'bg-red-500/20 text-red-400'
+                          : hasResult ? 'bg-green-500/20 text-green-400'
+                          : 'bg-yellow-500/20 text-yellow-400'
+                      }`}>
+                        {isError ? '오류' : hasResult ? '완료' : '대기'}
+                      </span>
                     </div>
                     <div className="px-4 py-3 report-content text-sm">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{phase.result || '결과 없음'}</ReactMarkdown>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {tab === 'da' && (
-            <div className="space-y-6">
-              {daPhases.map(phase => {
-                const w = workers.find(v => v.id === phase.workerId);
-                return (
-                  <div key={phase.id} className="border border-gray-700 rounded-xl overflow-hidden">
-                    <div className="bg-gray-800 px-4 py-3 flex items-center gap-2">
-                      {w && (
-                        <div className="w-8 h-8 rounded-full overflow-hidden border" style={{ borderColor: getCharColor(w.charId) }}>
-                          <img src={`/sprites/characters/CH_${w.charId}_Front.png`} alt="" className="w-full h-full object-cover" />
-                        </div>
-                      )}
-                      <span className="text-white font-bold text-sm">{w?.name}</span>
-                      <span className="text-gray-400 text-xs">{w?.title}</span>
-                    </div>
-                    <div className="px-4 py-3 report-content text-sm">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{phase.result || '결과 없음'}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+                        {hasResult ? phase.result : '결과 없음 — API 키 또는 연결 상태를 확인하세요'}
+                      </ReactMarkdown>
                     </div>
                   </div>
                 );

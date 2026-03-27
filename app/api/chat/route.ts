@@ -1,10 +1,11 @@
-import { streamText } from 'ai';
+import { streamText, stepCountIs } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 import { getRoleSystemPrompt } from '@/lib/role-prompts';
 import { RoleKey } from '@/lib/types';
 
 export const runtime = 'edge';
+export const maxDuration = 300;
 
 const WEB_SEARCH_ROLES: RoleKey[] = ['spPlanner', 'spCopy', 'spImage'];
 
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
     if (provider === 'google') {
       const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_IMAGEN_API_KEY;
       if (!apiKey) {
-        return new Response('[API 오류] GOOGLE_GENERATIVE_AI_API_KEY 환경변수가 설정되지 않았습니다. Vercel 환경변수를 확인하세요.', { status: 200 });
+        return new Response('[API 오류] GOOGLE_GENERATIVE_AI_API_KEY 환경변수가 설정되지 않았습니다.', { status: 200 });
       }
       const llmModel = google(model || 'gemini-2.0-flash-exp');
       const result = await streamText({
@@ -45,8 +46,7 @@ export async function POST(req: Request) {
     if (!apiKey) {
       return new Response(
         '[API 오류] ANTHROPIC_API_KEY 환경변수가 설정되지 않았습니다.\n\n' +
-        'Vercel 대시보드 → Settings → Environment Variables에서 ANTHROPIC_API_KEY를 추가하세요.\n' +
-        '또는 프로젝트 루트에 .env.local 파일을 만들고 ANTHROPIC_API_KEY=sk-ant-... 를 추가하세요.',
+        'Vercel 대시보드 → Settings → Environment Variables에서 ANTHROPIC_API_KEY를 추가하세요.',
         { status: 200 },
       );
     }
@@ -64,6 +64,7 @@ export async function POST(req: Request) {
             maxUses: 5,
           }),
         },
+        stopWhen: stepCountIs(10),
       });
       return result.toTextStreamResponse();
     }

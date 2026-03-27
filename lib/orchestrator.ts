@@ -423,15 +423,20 @@ async function callLLMStreaming(
         enableWebSearch: needsWebSearch,
       }),
     });
-    if (!res.ok) throw new Error(`${res.status}`);
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status}: ${errText.slice(0, 200)}`);
+    }
     const reader = res.body?.getReader();
-    if (!reader) throw new Error('No body');
+    if (!reader) throw new Error('No response body');
     const dec = new TextDecoder();
     let out = '';
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      out += dec.decode(value, { stream: true });
+      const chunk = dec.decode(value, { stream: true });
+      out += chunk;
+      onChunk?.(out);
     }
     return out;
   }
@@ -756,16 +761,31 @@ export async function runAutonomousProject(input: ProjectInput) {
       msg(manager.id, manager.name, worker.id, worker.name, `${worker.name}님, [순서${phase.order}] 작업 시작해주세요!`, 'handoff');
     }
 
-    const latestPhases = useOfficeStore.getState().project?.phases ?? phases;
-    await runPhase(phase, latestPhases, input);
+    try {
+      const latestPhases = useOfficeStore.getState().project?.phases ?? phases;
+      await runPhase(phase, latestPhases, input);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const fallback = `[순서${phase.order} 오류] ${worker?.name ?? '에이전트'}: ${errMsg}`;
+      useOfficeStore.getState().completePhase(phase.id, fallback);
+      useOfficeStore.getState().setWorkerState(worker?.id ?? '', 'idle');
+      phase.status = 'completed';
+      phase.result = fallback;
+      msg(worker?.id ?? '', worker?.name ?? '', '', '전체', `순서${phase.order} 작업 중 오류 발생 — 다음 단계로 진행합니다.`, 'status');
+    }
 
-    const bPhase = phases.find(p => p.abVariant === 'B' && p.order === phase.order);
-    if (bPhase) {
-      if (manager && worker) {
-        msg(manager.id, manager.name, worker.id, worker.name, `${worker.name}님, B안 작성도 시작해주세요!`, 'handoff');
+    try {
+      const bPhase = phases.find(p => p.abVariant === 'B' && p.order === phase.order);
+      if (bPhase) {
+        if (manager && worker) {
+          msg(manager.id, manager.name, worker.id, worker.name, `${worker.name}님, B안 작성도 시작해주세요!`, 'handoff');
+        }
+        const latestPhasesB = useOfficeStore.getState().project?.phases ?? phases;
+        await runPhase(bPhase, latestPhasesB, input);
       }
-      const latestPhasesB = useOfficeStore.getState().project?.phases ?? phases;
-      await runPhase(bPhase, latestPhasesB, input);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      msg(worker?.id ?? '', worker?.name ?? '', '', '전체', `B안 작업 중 오류: ${errMsg}`, 'status');
     }
   }
 
