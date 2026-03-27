@@ -23,6 +23,10 @@ export async function preloadAssets(): Promise<void> {
     console.warn('2F background not found, will use 1F as fallback');
     return loadImage('/sprites/bg/bg.png');
   }));
+  p.push(loadImage('/sprites/bg/bg_3f.png').catch(() => {
+    console.warn('3F background not found, will use 1F as fallback');
+    return loadImage('/sprites/bg/bg.png');
+  }));
   for (let i = 1; i <= 10; i++) {
     p.push(loadImage(`/sprites/characters/CH_${i}_Front.png`));
     p.push(loadImage(`/sprites/characters/CH_${i}_Left.png`));

@@ -16,7 +16,7 @@ export default function OfficeCanvas() {
     const engine = new GameEngine(canvas, {
       onWorkerClick: (id: string) => {
         const s = useOfficeStore.getState();
-        const proj = s.currentFloor === 1 ? s.project : s.floor2Project;
+        const proj = s.currentFloor === 1 ? s.project : s.currentFloor === 2 ? s.floor2Project : s.floor3Project;
         const clickedWorker = s.workers.find(w => w.id === id);
         if (proj?.status === 'waiting_image' && clickedWorker?.roleKey === 'daStrategy') {
           s.openTaskModal(id);
@@ -28,7 +28,7 @@ export default function OfficeCanvas() {
       },
       onManagerClick: (id: string) => {
         const s = useOfficeStore.getState();
-        const proj = s.currentFloor === 1 ? s.project : s.floor2Project;
+        const proj = s.currentFloor === 1 ? s.project : s.currentFloor === 2 ? s.floor2Project : s.floor3Project;
         if (proj && proj.status !== 'idle' && proj.status !== 'completed') {
           s.setWorkerPeek(id);
         } else {

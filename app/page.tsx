@@ -34,7 +34,7 @@ export default function Home() {
   const workers = useOfficeStore(s => s.workers);
   const currentFloor = useOfficeStore(s => s.currentFloor);
   const setCurrentFloor = useOfficeStore(s => s.setCurrentFloor);
-  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.floor2Project);
+  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.currentFloor === 2 ? s.floor2Project : s.floor3Project);
   const projectQueue = useOfficeStore(s => s.projectQueue);
   const completeTask = useOfficeStore(s => s.completeTask);
   const sendWorkerToCEO = useOfficeStore(s => s.sendWorkerToCEO);
@@ -200,6 +200,15 @@ export default function Home() {
                   : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
               }`}>
               2F AI제작
+            </button>
+            <button
+              onClick={() => setCurrentFloor(3)}
+              className={`text-xs px-3 py-1 rounded-full font-bold transition-all ${
+                currentFloor === 3
+                  ? 'bg-emerald-600 text-white shadow-lg'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+              }`}>
+              3F DA제작
             </button>
           </div>
           <span className="text-gray-600 text-xs">AI Agent Simulation</span>

@@ -17,6 +17,15 @@ const PIPELINE_MEMBERS = [
 
 const POST_PIPELINE_MEMBER = { name: '정민수', role: 'AI 이미지 작업', step: 5 };
 
+const FLOOR3_MEMBERS = [
+  { name: '서유나', role: 'DA 디자인' },
+  { name: '임도윤', role: 'DA 카피' },
+  { name: '권서영', role: 'DA 전략' },
+  { name: '문채린', role: 'DA 분석' },
+  { name: '백서윤', role: 'DA 소재' },
+  { name: '안지호', role: 'DA 운영' },
+];
+
 const FLOOR2_MEMBERS = [
   { name: '김영주', role: 'AI 이미지' },
   { name: '오예원', role: 'AI 이미지' },
@@ -65,7 +74,7 @@ export default function ProjectInputModal() {
   const modal = useOfficeStore(s => s.modal);
   const closeModal = useOfficeStore(s => s.closeModal);
   const currentFloor = useOfficeStore(s => s.currentFloor);
-  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.floor2Project);
+  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.currentFloor === 2 ? s.floor2Project : s.floor3Project);
   const openTemplates = useOfficeStore(s => s.openTemplatesModal);
   const openCompetitor = useOfficeStore(s => s.openCompetitorModal);
 
@@ -78,6 +87,8 @@ export default function ProjectInputModal() {
   if (project && project.status !== 'idle' && project.status !== 'completed') return null;
 
   const isFloor2 = currentFloor === 2;
+  const isFloor3 = currentFloor === 3;
+  const isUpperFloor = isFloor2 || isFloor3;
   const canSubmit = form.productName.trim() && form.brandName.trim() && form.sp1.trim();
 
   const updateForm = (key: keyof ProductForm, value: string) => setForm(prev => ({ ...prev, [key]: value }));
@@ -94,14 +105,14 @@ export default function ProjectInputModal() {
     if (!canSubmit || submitting) return;
     setSubmitting(true);
     closeModal();
-    if (isFloor2) {
+    if (isUpperFloor) {
       runAutonomousProject({
         teams: 'sp',
         spPrompt: buildSpPrompt(form),
         daPrompt: '',
         abEnabled: false,
         templateId: templateId || undefined,
-        floor: 2,
+        floor: currentFloor,
       });
     } else {
       runAutonomousProject({
@@ -126,16 +137,16 @@ export default function ProjectInputModal() {
       <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden max-h-[90vh] flex flex-col">
         <div className="p-5 border-b border-gray-700 flex-shrink-0">
           <h2 className="text-white font-bold text-lg">
-            {isFloor2 ? '새 프로젝트 시작 — AI 제작 부서' : '새 프로젝트 시작 — 상세페이지 제작'}
+            {isFloor3 ? '새 프로젝트 시작 — DA 제작 부서' : isFloor2 ? '새 프로젝트 시작 — AI 제작 부서' : '새 프로젝트 시작 — 상세페이지 제작'}
           </h2>
           <p className="text-gray-400 text-sm mt-1">
-            {isFloor2 ? '상품 정보 입력 → AI 이미지 생성' : '상품 정보 입력 → 8단계 순차 파이프라인 실행'}
+            {isFloor3 ? '상품 정보 입력 → DA 소재 제작' : isFloor2 ? '상품 정보 입력 → AI 이미지 생성' : '상품 정보 입력 → 7단계 순차 파이프라인 실행'}
           </p>
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto flex-1">
           {/* Quick Actions (1층만) */}
-          {!isFloor2 && (
+          {!isUpperFloor && (
             <div className="flex gap-2">
               <button onClick={openTemplates}
                 className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs transition-colors border border-gray-700">
@@ -148,7 +159,7 @@ export default function ProjectInputModal() {
             </div>
           )}
 
-          {!isFloor2 && competitorData && (
+          {!isUpperFloor && competitorData && (
             <div className="flex items-center gap-2 px-3 py-2 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
               <span className="text-cyan-400 text-xs">경쟁사: {competitorData.brandName}</span>
               <button onClick={() => setCompetitorData(null)} className="text-gray-500 hover:text-white text-xs ml-auto">x</button>
@@ -168,8 +179,21 @@ export default function ProjectInputModal() {
             </div>
           )}
 
+          {/* 3층 팀 표시 */}
+          {isFloor3 && (
+            <div className="rounded-xl p-4 border-2 border-emerald-500 bg-emerald-500/10">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="font-bold text-sm text-emerald-400">DA 제작 부서</span>
+                <span className="text-xs text-gray-500">6명의 DA 제작 에이전트</span>
+              </div>
+              <div className="text-gray-500 text-xs space-y-0.5 ml-2 grid grid-cols-2 gap-1">
+                {FLOOR3_MEMBERS.map(m => <div key={m.name}>{m.name} — {m.role}</div>)}
+              </div>
+            </div>
+          )}
+
           {/* 1층 파이프라인 표시 */}
-          {!isFloor2 && (
+          {!isUpperFloor && (
             <div className="rounded-xl p-4 border-2 border-blue-500 bg-blue-500/10">
               <div className="flex items-center gap-2 mb-3">
                 <span className="font-bold text-sm text-blue-400">상세페이지 제작 파이프라인</span>
@@ -242,6 +266,7 @@ export default function ProjectInputModal() {
           <button onClick={submit} disabled={!canSubmit || submitting}
             className="w-full px-4 py-3.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white rounded-xl text-sm font-bold transition-all">
             {submitting ? '에이전트를 배치하는 중...'
+              : isFloor3 ? 'DA 제작 부서 프로젝트 시작'
               : isFloor2 ? 'AI 제작 부서 프로젝트 시작'
               : '상세페이지 제작 파이프라인 시작'}
           </button>

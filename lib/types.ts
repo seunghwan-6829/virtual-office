@@ -33,9 +33,15 @@ export type RoleKey =
   | 'aiImage3'
   | 'aiImage4'
   | 'aiImage5'
-  | 'aiImage6';
+  | 'aiImage6'
+  | 'daDesign1'
+  | 'daDesign2'
+  | 'daDesign3'
+  | 'daDesign4'
+  | 'daDesign5'
+  | 'daDesign6';
 
-export type FloorId = 1 | 2;
+export type FloorId = 1 | 2 | 3;
 
 export interface Position {
   x: number;

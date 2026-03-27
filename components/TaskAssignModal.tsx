@@ -43,6 +43,12 @@ export default function TaskAssignModal() {
     case 'aiImage4':
     case 'aiImage5':
     case 'aiImage6':
+    case 'daDesign1':
+    case 'daDesign2':
+    case 'daDesign3':
+    case 'daDesign4':
+    case 'daDesign5':
+    case 'daDesign6':
       return <SPImageModal worker={worker} onClose={closeModal} />;
     default:
       return null;

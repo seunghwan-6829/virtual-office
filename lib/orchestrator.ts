@@ -199,6 +199,15 @@ const FLOOR2_WORKFLOW: { roleKey: RoleKey; order: number; taskTemplate: string; 
   { roleKey: 'aiImage6', order: 0, wave: 1, taskTemplate: 'AI 제품 이미지를 생성해주세요. 프리미엄 감성의 제품 이미지를 제작하세요.' },
 ];
 
+const FLOOR3_WORKFLOW: { roleKey: RoleKey; order: number; taskTemplate: string; wave: number }[] = [
+  { roleKey: 'daDesign1', order: 0, wave: 1, taskTemplate: 'DA 광고 소재를 디자인해주세요. 주어진 상품 정보를 기반으로 클릭율을 높일 수 있는 배너/카드 소재를 기획하세요.' },
+  { roleKey: 'daDesign2', order: 0, wave: 1, taskTemplate: 'DA 광고 카피를 작성해주세요. 짧고 임팩트 있는 헤드라인과 서브카피를 다양한 버전으로 만들어주세요.' },
+  { roleKey: 'daDesign3', order: 0, wave: 1, taskTemplate: 'DA 매체 전략을 수립해주세요. 타겟 오디언스 분석, 매체별 전략, 예산 배분 방안을 제시하세요.' },
+  { roleKey: 'daDesign4', order: 0, wave: 1, taskTemplate: 'DA 성과 예측 및 KPI를 설정해주세요. CTR, CVR, CPA 등 핵심 지표 목표를 수립하세요.' },
+  { roleKey: 'daDesign5', order: 0, wave: 1, taskTemplate: 'DA 소재 A/B 테스트 플랜을 수립해주세요. 테스트 변수, 기간, 성공 기준을 설계하세요.' },
+  { roleKey: 'daDesign6', order: 0, wave: 1, taskTemplate: 'DA 캠페인 운영 가이드를 작성해주세요. 일별 운영 체크리스트, 예산 관리, 소재 로테이션 전략을 포함하세요.' },
+];
+
 export type TeamSelection = 'both' | 'sp' | 'da';
 
 export interface ProjectInput {
@@ -241,13 +250,12 @@ export function createProjectPhases(input: ProjectInput): WorkPhase[] {
   const workers = useOfficeStore.getState().workers;
   const phases: WorkPhase[] = [];
 
-  if (input.floor === 2) {
-    const wave1Ids: Record<string, string> = {};
-    for (const wf of FLOOR2_WORKFLOW) {
+  if (input.floor === 2 || input.floor === 3) {
+    const workflow = input.floor === 3 ? FLOOR3_WORKFLOW : FLOOR2_WORKFLOW;
+    for (const wf of workflow) {
       const worker = workers.find(w => w.roleKey === wf.roleKey);
       if (!worker) continue;
       const phaseId = uid();
-      if (wf.wave === 1) wave1Ids['sp'] = phaseId;
       phases.push({
         id: phaseId,
         roleKey: wf.roleKey,
@@ -711,6 +719,42 @@ async function runFloor2Project(input: ProjectInput, phases: WorkPhase[], combin
   useOfficeStore.getState().completeFloor2Project(report);
 }
 
+async function runFloor3Project(input: ProjectInput, phases: WorkPhase[], combinedInfo: string) {
+  const s = useOfficeStore.getState();
+  useOfficeStore.getState().setFloor3ProjectStatus('in_progress');
+
+  for (const p of phases) {
+    const w = s.workers.find(v => v.id === p.workerId);
+    if (w) bubble(w.id, 'DA 제작 작업 시작!', 6000);
+  }
+
+  await Promise.all(phases.map(async (p) => {
+    const worker = s.workers.find(v => v.id === p.workerId);
+    if (!worker) return;
+
+    useOfficeStore.getState().setWorkerState(worker.id, 'working');
+    const instruction = p.task + `\n\n[상품 정보]\n${combinedInfo}`;
+
+    const result = await callLLMStreaming(instruction, worker, (streaming) => {
+      useOfficeStore.getState().updateWorkerStreaming(worker.id, streaming);
+    }, 8192);
+
+    p.status = 'completed';
+    p.result = result;
+    useOfficeStore.getState().setWorkerState(worker.id, 'idle');
+    useOfficeStore.getState().updateWorkerStreaming(worker.id, '');
+    bubble(worker.id, '작업 완료!', 4000);
+  }));
+
+  const reportLines = phases.map(p => {
+    const w = s.workers.find(v => v.id === p.workerId);
+    return `### ${w?.name} (${w?.title})\n${p.result}`;
+  });
+
+  const report = `# DA 제작 부서 프로젝트 결과\n\n${reportLines.join('\n\n---\n\n')}`;
+  useOfficeStore.getState().completeFloor3Project(report);
+}
+
 export async function runAutonomousProject(input: ProjectInput) {
   interventionQueue = [];
   const s = useOfficeStore.getState();
@@ -722,6 +766,14 @@ export async function runAutonomousProject(input: ProjectInput) {
       templateId: input.templateId,
     });
     await runFloor2Project(input, phases, combinedInfo);
+    return;
+  }
+
+  if (input.floor === 3) {
+    s.startFloor3Project(combinedInfo, phases, {
+      templateId: input.templateId,
+    });
+    await runFloor3Project(input, phases, combinedInfo);
     return;
   }
 

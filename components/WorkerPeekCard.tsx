@@ -13,7 +13,7 @@ const STATE_EMOJI: Record<string, string> = {
 export default function WorkerPeekCard() {
   const peekId = useOfficeStore(s => s.peekWorkerId);
   const workers = useOfficeStore(s => s.workers);
-  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.floor2Project);
+  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.currentFloor === 2 ? s.floor2Project : s.floor3Project);
   const close = useOfficeStore(s => s.setWorkerPeek);
   const setLiveStream = useOfficeStore(s => s.setLiveStreamWorker);
   const openPersonality = useOfficeStore(s => s.openPersonalityModal);

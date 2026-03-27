@@ -6,7 +6,7 @@ import {
   SpeechBubbleData, AgentPersonality, DEFAULT_PERSONALITY,
   TimelineEvent, PROJECT_COLORS, CEONote, CopyArchiveItem,
 } from './types';
-import { OFFICES, FLOOR2_OFFICES, MANAGER_POSITION, MANAGER_DIRECTION, getCEOWaitPosition, getOffice, CORRIDOR_Y } from './game/office-map';
+import { OFFICES, FLOOR2_OFFICES, FLOOR3_OFFICES, MANAGER_POSITION, MANAGER_DIRECTION, getCEOWaitPosition, getOffice, CORRIDOR_Y } from './game/office-map';
 import { buildPathToWait, buildPathToSeat } from './game/pathfinding';
 import { saveTaskRecord } from './storage';
 
@@ -36,6 +36,11 @@ export interface OfficeStore {
   floor2Project: Project | null;
   floor2Messages: AgentMessage[];
   floor2Timeline: TimelineEvent[];
+
+  /* 3층 전용 상태 */
+  floor3Project: Project | null;
+  floor3Messages: AgentMessage[];
+  floor3Timeline: TimelineEvent[];
 
   getFloorWorkers: (floor: FloorId) => Worker[];
   getActiveProject: () => Project | null;
@@ -122,6 +127,13 @@ export interface OfficeStore {
   completeFloor2Project: (finalReport: string) => void;
   addFloor2Message: (msg: AgentMessage) => void;
   reviewFloor2Project: (feedback?: string) => void;
+
+  /* 3층 프로젝트 액션 */
+  startFloor3Project: (productInfo: string, phases: WorkPhase[], opts?: Partial<Project>) => void;
+  setFloor3ProjectStatus: (status: ProjectStatus) => void;
+  completeFloor3Project: (finalReport: string) => void;
+  addFloor3Message: (msg: AgentMessage) => void;
+  reviewFloor3Project: (feedback?: string) => void;
 }
 
 function makeWorker(
@@ -136,7 +148,7 @@ function makeWorker(
   isManager = false,
   floor: FloorId = 1,
 ): Worker {
-  const officeArr = floor === 2 ? FLOOR2_OFFICES : OFFICES;
+  const officeArr = floor === 3 ? FLOOR3_OFFICES : floor === 2 ? FLOOR2_OFFICES : OFFICES;
   const office = officeArr[officeIdx];
   return {
     id: uid(),
@@ -173,6 +185,17 @@ const FLOOR2_INITIAL: Worker[] = [
   makeWorker(1, 5, '한나라', 'AI 이미지', 'aiImage6', 'AI 제품 이미지 생성', 'google' as LLMProvider, 'gemini-2.0-flash-exp', false, 2),
 ];
 
+/* 3층 캐릭터 (DA 제작 부서)
+   FLOOR3_OFFICES: idx 0-2 = 위 3명(Front), idx 3-5 = 아래 3명(Back) */
+const FLOOR3_INITIAL: Worker[] = [
+  makeWorker(3, 0, '서유나', 'DA 디자인', 'daDesign1', 'DA 소재 디자인 및 제작', 'anthropic' as LLMProvider, 'claude-sonnet-4-20250514', false, 3),
+  makeWorker(5, 1, '임도윤', 'DA 카피', 'daDesign2', 'DA 광고 카피라이팅', 'anthropic' as LLMProvider, 'claude-sonnet-4-20250514', false, 3),
+  makeWorker(1, 2, '권서영', 'DA 전략', 'daDesign3', 'DA 매체 전략 및 타겟팅', 'anthropic' as LLMProvider, 'claude-sonnet-4-20250514', false, 3),
+  makeWorker(4, 3, '문채린', 'DA 분석', 'daDesign4', 'DA 성과 분석 및 최적화', 'anthropic' as LLMProvider, 'claude-sonnet-4-20250514', false, 3),
+  makeWorker(2, 4, '백서윤', 'DA 소재', 'daDesign5', 'DA 소재 기획 및 A/B 테스트', 'anthropic' as LLMProvider, 'claude-sonnet-4-20250514', false, 3),
+  makeWorker(6, 5, '안지호', 'DA 운영', 'daDesign6', 'DA 캠페인 운영 관리', 'anthropic' as LLMProvider, 'claude-sonnet-4-20250514', false, 3),
+];
+
 const M = 'claude-sonnet-4-20250514';
 const P = 'anthropic' as LLMProvider;
 
@@ -193,7 +216,7 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
   currentFloor: 1 as FloorId,
   setCurrentFloor: (floor) => set({ currentFloor: floor }),
 
-  workers: [...INITIAL, ...FLOOR2_INITIAL],
+  workers: [...INITIAL, ...FLOOR2_INITIAL, ...FLOOR3_INITIAL],
   tasks: [],
   managerLogs: [],
   modal: { type: null, workerId: null },
@@ -211,14 +234,18 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
   floor2Messages: [],
   floor2Timeline: [],
 
+  floor3Project: null,
+  floor3Messages: [],
+  floor3Timeline: [],
+
   getFloorWorkers: (floor) => get().workers.filter(w => w.floor === floor),
   getActiveProject: () => {
     const s = get();
-    return s.currentFloor === 1 ? s.project : s.floor2Project;
+    return s.currentFloor === 1 ? s.project : s.currentFloor === 2 ? s.floor2Project : s.floor3Project;
   },
   getActiveMessages: () => {
     const s = get();
-    return s.currentFloor === 1 ? s.officeMessages : s.floor2Messages;
+    return s.currentFloor === 1 ? s.officeMessages : s.currentFloor === 2 ? s.floor2Messages : s.floor3Messages;
   },
 
   getWorker: (id) => get().workers.find(w => w.id === id),
@@ -679,5 +706,51 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
       return { floor2Project: { ...s.floor2Project, reviewFeedback: feedback, reviewed: false } };
     }
     return { floor2Project: { ...s.floor2Project, reviewed: true, reviewFeedback: undefined } };
+  }),
+
+  /* 3층 프로젝트 */
+  startFloor3Project: (productInfo, phases, opts) => {
+    const colorIdx = (get().projectQueue.length) % PROJECT_COLORS.length;
+    const proj: Project = {
+      id: uid(), productInfo, status: 'planning',
+      phases, messages: [], finalReport: null,
+      createdAt: Date.now(), color: PROJECT_COLORS[colorIdx],
+      ...opts,
+    };
+    const workerUpdates = phases.map(p => p.workerId);
+    set(s => ({
+      floor3Project: proj,
+      workers: s.workers.map(w =>
+        workerUpdates.includes(w.id) ? { ...w, projectColor: proj.color } : w
+      ),
+      modal: { type: null, workerId: null },
+    }));
+  },
+
+  setFloor3ProjectStatus: (status) => set(s => ({
+    floor3Project: s.floor3Project ? { ...s.floor3Project, status } : null,
+  })),
+
+  completeFloor3Project: (finalReport) => set(s => {
+    if (!s.floor3Project) return {};
+    const completed: Project = {
+      ...s.floor3Project, status: 'completed', finalReport, completedAt: Date.now(),
+    };
+    return {
+      floor3Project: completed,
+      projectQueue: [...s.projectQueue, completed],
+    };
+  }),
+
+  addFloor3Message: (msg) => set(s => ({
+    floor3Messages: [...s.floor3Messages.slice(-200), msg],
+  })),
+
+  reviewFloor3Project: (feedback) => set(s => {
+    if (!s.floor3Project) return {};
+    if (feedback) {
+      return { floor3Project: { ...s.floor3Project, reviewFeedback: feedback, reviewed: false } };
+    }
+    return { floor3Project: { ...s.floor3Project, reviewed: true, reviewFeedback: undefined } };
   }),
 }));

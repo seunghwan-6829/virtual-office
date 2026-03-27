@@ -13,7 +13,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 export default function ProjectProgressPanel() {
-  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.floor2Project);
+  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.currentFloor === 2 ? s.floor2Project : s.floor3Project);
   const workers = useOfficeStore(s => s.workers.filter(w => w.floor === s.currentFloor));
   const openFinalReport = useOfficeStore(s => s.openFinalReport);
   const setLiveStream = useOfficeStore(s => s.setLiveStreamWorker);

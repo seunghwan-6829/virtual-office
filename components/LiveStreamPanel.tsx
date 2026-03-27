@@ -17,7 +17,7 @@ export default function LiveStreamPanel() {
   const setLive = useOfficeStore(s => s.setLiveStreamWorker);
   const workers = useOfficeStore(s => s.workers);
   const currentFloor = useOfficeStore(s => s.currentFloor);
-  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.floor2Project);
+  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.currentFloor === 2 ? s.floor2Project : s.floor3Project);
 
   const worker = workers.find(w => w.id === liveId);
   const phase = project?.phases.find(p => p.workerId === liveId && p.status === 'in_progress');

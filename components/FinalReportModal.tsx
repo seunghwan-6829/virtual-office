@@ -158,7 +158,7 @@ function markdownToHTML(md: string): string {
 export default function FinalReportModal() {
   const modal = useOfficeStore(s => s.modal);
   const currentFloor = useOfficeStore(s => s.currentFloor);
-  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.floor2Project);
+  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.currentFloor === 2 ? s.floor2Project : s.floor3Project);
   const workers = useOfficeStore(s => s.workers);
   const closeModal = useOfficeStore(s => s.closeModal);
   const reviewProject = useOfficeStore(s => s.currentFloor === 1 ? s.reviewProject : s.reviewFloor2Project);

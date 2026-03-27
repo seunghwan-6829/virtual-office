@@ -54,7 +54,7 @@ export default function AgentChatPanel() {
   const chatOpen = useOfficeStore(s => s.chatPanelOpen);
   const setChatOpen = useOfficeStore(s => s.setChatPanelOpen);
   const currentFloor = useOfficeStore(s => s.currentFloor);
-  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.floor2Project);
+  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.currentFloor === 2 ? s.floor2Project : s.floor3Project);
   const officeMessages = useOfficeStore(s => s.currentFloor === 1 ? s.officeMessages : s.floor2Messages);
   const workers = useOfficeStore(s => s.workers.filter(w => w.floor === s.currentFloor));
   const ceoNotes = useOfficeStore(s => s.ceoNotes);

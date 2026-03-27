@@ -28,11 +28,21 @@ export const FLOOR2_OFFICES: OfficeSlot[] = [
   { id: '2B3', seat: { x: 1980, y: 1195 }, door: { x: 1980, y: 935 }, seatDirection: 'up' },
 ];
 
+/* 3층 전용 — 2층과 동일 배치 (위 3명 Front + 아래 3명 Back) */
+export const FLOOR3_OFFICES: OfficeSlot[] = [
+  { id: '3T1', seat: { x: 710, y: 540 },  door: { x: 710, y: 680 },  seatDirection: 'down' },
+  { id: '3T2', seat: { x: 1240, y: 540 }, door: { x: 1240, y: 680 }, seatDirection: 'down' },
+  { id: '3T3', seat: { x: 1770, y: 540 }, door: { x: 1770, y: 680 }, seatDirection: 'down' },
+  { id: '3B1', seat: { x: 920, y: 1195 },  door: { x: 920, y: 935 },  seatDirection: 'up' },
+  { id: '3B2', seat: { x: 1450, y: 1195 }, door: { x: 1450, y: 935 }, seatDirection: 'up' },
+  { id: '3B3', seat: { x: 1980, y: 1195 }, door: { x: 1980, y: 935 }, seatDirection: 'up' },
+];
+
 export const MANAGER_POSITION: Position = { x: 2500, y: 390 };
 export const MANAGER_DIRECTION = 'down' as const;
 
 export function getOffice(id: string): OfficeSlot | undefined {
-  return OFFICES.find(o => o.id === id) || FLOOR2_OFFICES.find(o => o.id === id);
+  return OFFICES.find(o => o.id === id) || FLOOR2_OFFICES.find(o => o.id === id) || FLOOR3_OFFICES.find(o => o.id === id);
 }
 
 export function getCEOWaitPosition(waitingIndex: number): Position {

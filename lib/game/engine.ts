@@ -106,7 +106,7 @@ export class GameEngine {
     const ctx = this.ctx;
     const floor = this.cb.getFloor();
 
-    const bgKey = floor === 2 ? '/sprites/bg/bg_2f.png' : '/sprites/bg/bg.png';
+    const bgKey = floor === 3 ? '/sprites/bg/bg_3f.png' : floor === 2 ? '/sprites/bg/bg_2f.png' : '/sprites/bg/bg.png';
     const bg = getImage(bgKey) || getImage('/sprites/bg/bg.png');
     if (bg) ctx.drawImage(bg, 0, 0, BG_WIDTH, BG_HEIGHT);
 
