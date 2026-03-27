@@ -1,17 +1,14 @@
-import { streamText, stepCountIs } from 'ai';
+import { streamText } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 import { getRoleSystemPrompt } from '@/lib/role-prompts';
 import { RoleKey } from '@/lib/types';
 
 export const runtime = 'edge';
-export const maxDuration = 300;
-
-const WEB_SEARCH_ROLES: RoleKey[] = ['spPlanner', 'spCopy', 'spImage'];
 
 export async function POST(req: Request) {
   try {
-    const { instruction, role, roleKey, model, provider, previousResult, revisionFeedback, maxTokens, enableWebSearch } = await req.json();
+    const { instruction, role, roleKey, model, provider, previousResult, revisionFeedback, maxTokens } = await req.json();
 
     if (!instruction && !previousResult) {
       return new Response('지시사항이 비어있습니다.', { status: 400 });
@@ -25,55 +22,29 @@ export async function POST(req: Request) {
       systemPrompt += '\n\n이전 결과를 기반으로 수정 요청사항을 반영하세요.';
     }
 
-    const needsWebSearch = enableWebSearch || WEB_SEARCH_ROLES.includes(roleKey as RoleKey);
+    const apiKey = provider === 'google'
+      ? (process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_IMAGEN_API_KEY)
+      : process.env.ANTHROPIC_API_KEY;
 
-    if (provider === 'google') {
-      const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_IMAGEN_API_KEY;
-      if (!apiKey) {
-        return new Response('[API 오류] GOOGLE_GENERATIVE_AI_API_KEY 환경변수가 설정되지 않았습니다.', { status: 200 });
-      }
-      const llmModel = google(model || 'gemini-2.0-flash-exp');
-      const result = await streamText({
-        model: llmModel,
-        system: systemPrompt,
-        prompt,
-        maxOutputTokens: Number(maxTokens) || 16384,
-      });
-      return result.toTextStreamResponse();
-    }
-
-    const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
+      const keyName = provider === 'google' ? 'GOOGLE_GENERATIVE_AI_API_KEY' : 'ANTHROPIC_API_KEY';
       return new Response(
-        '[API 오류] ANTHROPIC_API_KEY 환경변수가 설정되지 않았습니다.\n\n' +
-        'Vercel 대시보드 → Settings → Environment Variables에서 ANTHROPIC_API_KEY를 추가하세요.',
+        `[API 오류] ${keyName} 환경변수가 설정되지 않았습니다.\n\n` +
+        'Vercel 대시보드 → Settings → Environment Variables에서 추가하세요.\n' +
+        '또는 프로젝트 루트에 .env.local 파일을 만들어 추가하세요.',
         { status: 200 },
       );
     }
 
-    const llmModel = anthropic(model || 'claude-opus-4-6');
-
-    if (needsWebSearch) {
-      const result = await streamText({
-        model: llmModel,
-        system: systemPrompt + '\n\n[웹 검색 활용 지침]\n- 최신 시장 데이터, 타사 사례, 트렌드를 웹 검색으로 확인하세요\n- 검색 결과를 교차 검증하여 신뢰성을 확보하세요\n- 검색한 정보의 출처를 명시하세요',
-        prompt,
-        maxOutputTokens: Number(maxTokens) || 16384,
-        tools: {
-          web_search: anthropic.tools.webSearch_20250305({
-            maxUses: 5,
-          }),
-        },
-        stopWhen: stepCountIs(10),
-      });
-      return result.toTextStreamResponse();
-    }
+    const llmModel = provider === 'google'
+      ? google(model || 'gemini-2.0-flash-exp')
+      : anthropic(model || 'claude-opus-4-6');
 
     const result = await streamText({
       model: llmModel,
       system: systemPrompt,
       prompt,
-      maxOutputTokens: Number(maxTokens) || 16384,
+      maxTokens: Number(maxTokens) || 16384,
     });
 
     return result.toTextStreamResponse();

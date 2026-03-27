@@ -398,8 +398,6 @@ function detectTruncation(text: string): boolean {
 
 const MAX_CONTINUATION_ROUNDS = 3;
 
-const WEB_SEARCH_ROLES: Set<string> = new Set(['spPlanner', 'spCopy', 'spImage']);
-
 async function callLLMStreaming(
   instruction: string,
   worker: { role: string; roleKey: string; model: string; name: string; title: string; provider?: string },
@@ -407,7 +405,6 @@ async function callLLMStreaming(
   maxTokens?: number,
 ): Promise<string> {
   const effectiveMax = maxTokens ?? 16384;
-  const needsWebSearch = WEB_SEARCH_ROLES.has(worker.roleKey);
 
   async function singleCall(prompt: string, tokens: number): Promise<string> {
     const res = await fetch('/api/chat', {
@@ -420,7 +417,6 @@ async function callLLMStreaming(
         model: worker.model,
         provider: worker.provider,
         maxTokens: tokens,
-        enableWebSearch: needsWebSearch,
       }),
     });
     if (!res.ok) {
