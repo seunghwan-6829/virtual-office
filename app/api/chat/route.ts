@@ -27,6 +27,7 @@ export async function POST(req: Request) {
       system: systemPrompt,
       prompt,
       maxTokens: Number(maxTokens) || 16384,
+      maxRetries: 8,
     });
 
     return result.toTextStreamResponse();

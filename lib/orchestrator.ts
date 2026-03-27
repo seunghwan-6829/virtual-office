@@ -406,7 +406,9 @@ async function callLLMStreaming(
 ): Promise<string> {
   const effectiveMax = maxTokens ?? 16384;
 
-  async function singleCall(prompt: string, tokens: number): Promise<string> {
+  const MAX_API_RETRIES = 5;
+
+  async function singleCallOnce(prompt: string, tokens: number): Promise<string> {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -437,6 +439,25 @@ async function callLLMStreaming(
     return out;
   }
 
+  async function singleCall(prompt: string, tokens: number): Promise<string> {
+    for (let attempt = 0; attempt < MAX_API_RETRIES; attempt++) {
+      try {
+        return await singleCallOnce(prompt, tokens);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const isOverloaded = msg.includes('Overloaded') || msg.includes('529') || msg.includes('rate') || msg.includes('503');
+        if (isOverloaded && attempt < MAX_API_RETRIES - 1) {
+          const waitSec = Math.pow(2, attempt + 1) * 3;
+          onChunk?.(`[서버 과부하] ${waitSec}초 후 재시도합니다... (${attempt + 1}/${MAX_API_RETRIES})`);
+          await new Promise(r => setTimeout(r, waitSec * 1000));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error('최대 재시도 횟수 초과');
+  }
+
   try {
     let accumulated = '';
     let currentInstruction = instruction;
@@ -455,7 +476,7 @@ async function callLLMStreaming(
     return accumulated;
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    return `[API 오류] ${worker.name}(${worker.title})\n\n오류: ${errMsg}\n\nANTHROPIC_API_KEY 환경변수가 올바르게 설정되어 있는지 확인하세요.`;
+    return `[API 오류] ${worker.name}(${worker.title})\n\n오류: ${errMsg}`;
   }
 }
 
