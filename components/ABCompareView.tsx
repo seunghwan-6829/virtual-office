@@ -8,7 +8,7 @@ import remarkGfm from 'remark-gfm';
 
 export default function ABCompareView() {
   const modal = useOfficeStore(s => s.modal);
-  const project = useOfficeStore(s => s.project);
+  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.floor2Project);
   const workers = useOfficeStore(s => s.workers);
   const closeModal = useOfficeStore(s => s.closeModal);
   const [votes, setVotes] = useState<Record<string, 'A' | 'B'>>({});

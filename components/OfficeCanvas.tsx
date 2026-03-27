@@ -16,7 +16,7 @@ export default function OfficeCanvas() {
     const engine = new GameEngine(canvas, {
       onWorkerClick: (id: string) => {
         const s = useOfficeStore.getState();
-        const proj = s.project;
+        const proj = s.currentFloor === 1 ? s.project : s.floor2Project;
         if (proj && proj.status !== 'idle' && proj.status !== 'completed') {
           s.setWorkerPeek(id);
         } else {
@@ -25,7 +25,7 @@ export default function OfficeCanvas() {
       },
       onManagerClick: (id: string) => {
         const s = useOfficeStore.getState();
-        const proj = s.project;
+        const proj = s.currentFloor === 1 ? s.project : s.floor2Project;
         if (proj && proj.status !== 'idle' && proj.status !== 'completed') {
           s.setWorkerPeek(id);
         } else {
@@ -34,6 +34,7 @@ export default function OfficeCanvas() {
       },
       onWaitingWorkerClick: (id: string) => useOfficeStore.getState().workerStartReport(id),
       getWorkers: () => useOfficeStore.getState().workers,
+      getFloor: () => useOfficeStore.getState().currentFloor,
       updateWorker: (id: string, u: Partial<Worker>) => useOfficeStore.getState().updateWorker(id, u),
       onWorkerArriveAtCEO: (id: string) => useOfficeStore.getState().workerArriveAtCEO(id),
       onWorkerReturnToDesk: (id: string) => useOfficeStore.getState().workerReturnToDesk(id),

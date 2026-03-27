@@ -15,7 +15,8 @@ export default function LiveStreamPanel() {
   const liveId = useOfficeStore(s => s.liveStreamWorkerId);
   const setLive = useOfficeStore(s => s.setLiveStreamWorker);
   const workers = useOfficeStore(s => s.workers);
-  const project = useOfficeStore(s => s.project);
+  const currentFloor = useOfficeStore(s => s.currentFloor);
+  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.floor2Project);
 
   if (!liveId) return null;
 
@@ -70,8 +71,8 @@ export default function LiveStreamPanel() {
         )}
       </div>
 
-      <div className="p-2 border-t border-gray-800 flex gap-1">
-        {workers.filter(w => !w.isManager && w.roleKey !== 'manager').map(w => (
+      <div className="p-2 border-t border-gray-800 flex gap-1 flex-wrap">
+        {workers.filter(w => !w.isManager && w.roleKey !== 'manager' && w.floor === currentFloor).map(w => (
           <button
             key={w.id}
             onClick={() => setLive(w.id)}

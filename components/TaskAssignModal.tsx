@@ -3,6 +3,7 @@
 import { useOfficeStore } from '@/lib/store';
 import SPPlannerModal from './role-modals/SPPlannerModal';
 import SPCopyModal from './role-modals/SPCopyModal';
+import PagePlanningModal from './role-modals/PagePlanningModal';
 import SPImageModal from './role-modals/SPImageModal';
 import SPCROModal from './role-modals/SPCROModal';
 import DAStrategyModal from './role-modals/DAStrategyModal';
@@ -25,7 +26,7 @@ export default function TaskAssignModal() {
     case 'spCopy':
       return <SPCopyModal worker={worker} onClose={closeModal} />;
     case 'spImage':
-      return <SPImageModal worker={worker} onClose={closeModal} />;
+      return <PagePlanningModal worker={worker} onClose={closeModal} />;
     case 'spCRO':
       return <SPCROModal worker={worker} onClose={closeModal} />;
     case 'daStrategy':
@@ -36,6 +37,13 @@ export default function TaskAssignModal() {
       return <DAAnalysisModal worker={worker} onClose={closeModal} />;
     case 'daCreative':
       return <DACreativeModal worker={worker} onClose={closeModal} />;
+    case 'aiImage1':
+    case 'aiImage2':
+    case 'aiImage3':
+    case 'aiImage4':
+    case 'aiImage5':
+    case 'aiImage6':
+      return <SPImageModal worker={worker} onClose={closeModal} />;
     default:
       return null;
   }

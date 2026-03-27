@@ -1,4 +1,4 @@
-import { Worker, Position, BG_WIDTH, BG_HEIGHT, CHAR_HEIGHT } from '../types';
+import { Worker, Position, BG_WIDTH, BG_HEIGHT, CHAR_HEIGHT, FloorId } from '../types';
 import {
   preloadAssets, getImage, drawCharacterSprite,
   drawCharacterLabel, drawSpeechBubble, drawProgressBar, drawReportWaiting,
@@ -15,6 +15,7 @@ export interface EngineCallbacks {
   onWorkerReturnToDesk: (workerId: string) => void;
   onWorkerArriveAtColleague: (workerId: string) => void;
   getSpeechBubbles: () => { workerId: string; text: string }[];
+  getFloor: () => FloorId;
 }
 
 export class GameEngine {
@@ -81,7 +82,8 @@ export class GameEngine {
   };
 
   private update(dt: number) {
-    const workers = this.cb.getWorkers();
+    const floor = this.cb.getFloor();
+    const workers = this.cb.getWorkers().filter(w => w.floor === floor);
     for (const w of workers) {
       const isMoving = w.state === 'walkingToCEO' || w.state === 'walkingBack' || w.state === 'revising' || w.state === 'walkingToColleague';
       if (!isMoving) continue;
@@ -102,11 +104,13 @@ export class GameEngine {
 
   private render() {
     const ctx = this.ctx;
+    const floor = this.cb.getFloor();
 
-    const bg = getImage('/sprites/bg/bg.png');
+    const bgKey = floor === 2 ? '/sprites/bg/bg_2f.png' : '/sprites/bg/bg.png';
+    const bg = getImage(bgKey) || getImage('/sprites/bg/bg.png');
     if (bg) ctx.drawImage(bg, 0, 0, BG_WIDTH, BG_HEIGHT);
 
-    const workers = this.cb.getWorkers();
+    const workers = this.cb.getWorkers().filter(w => w.floor === floor);
     const sorted = [...workers].sort((a, b) => a.position.y - b.position.y);
 
     const bubbles = this.cb.getSpeechBubbles();
@@ -145,7 +149,8 @@ export class GameEngine {
   }
 
   private hitTest(cx: number, cy: number): Worker | null {
-    const workers = this.cb.getWorkers();
+    const floor = this.cb.getFloor();
+    const workers = this.cb.getWorkers().filter(w => w.floor === floor);
     const sorted = [...workers].sort((a, b) => b.position.y - a.position.y);
     const hr = CHAR_HEIGHT * 0.5;
     for (const w of sorted) {

@@ -19,6 +19,10 @@ export function getImage(key: string): HTMLImageElement | undefined {
 export async function preloadAssets(): Promise<void> {
   const p: Promise<HTMLImageElement>[] = [];
   p.push(loadImage('/sprites/bg/bg.png'));
+  p.push(loadImage('/sprites/bg/bg_2f.png').catch(() => {
+    console.warn('2F background not found, will use 1F as fallback');
+    return loadImage('/sprites/bg/bg.png');
+  }));
   for (let i = 1; i <= 10; i++) {
     p.push(loadImage(`/sprites/characters/CH_${i}_Front.png`));
     p.push(loadImage(`/sprites/characters/CH_${i}_Left.png`));

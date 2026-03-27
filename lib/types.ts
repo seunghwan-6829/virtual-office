@@ -27,7 +27,15 @@ export type RoleKey =
   | 'daCopy'
   | 'daAnalysis'
   | 'daCreative'
-  | 'manager';
+  | 'manager'
+  | 'aiImage1'
+  | 'aiImage2'
+  | 'aiImage3'
+  | 'aiImage4'
+  | 'aiImage5'
+  | 'aiImage6';
+
+export type FloorId = 1 | 2;
 
 export interface Position {
   x: number;
@@ -77,6 +85,7 @@ export interface Worker {
   personality: AgentPersonality;
   streamingText: string;
   projectColor?: string;
+  floor: FloorId;
 }
 
 export interface Task {

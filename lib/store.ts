@@ -1,12 +1,12 @@
 import { create } from 'zustand';
 import {
   Worker, Task, ManagerLog, ModalState,
-  WorkerState, LLMProvider, RoleKey, TaskRecord,
+  WorkerState, LLMProvider, RoleKey, TaskRecord, FloorId,
   Project, WorkPhase, AgentMessage, ProjectStatus, PhaseStatus,
   SpeechBubbleData, AgentPersonality, DEFAULT_PERSONALITY,
   TimelineEvent, PROJECT_COLORS, CEONote, CopyArchiveItem,
 } from './types';
-import { OFFICES, MANAGER_POSITION, MANAGER_DIRECTION, getCEOWaitPosition, getOffice, CORRIDOR_Y } from './game/office-map';
+import { OFFICES, FLOOR2_OFFICES, MANAGER_POSITION, MANAGER_DIRECTION, getCEOWaitPosition, getOffice, CORRIDOR_Y } from './game/office-map';
 import { buildPathToWait, buildPathToSeat } from './game/pathfinding';
 import { saveTaskRecord } from './storage';
 
@@ -15,6 +15,9 @@ function uid(): string {
 }
 
 export interface OfficeStore {
+  currentFloor: FloorId;
+  setCurrentFloor: (floor: FloorId) => void;
+
   workers: Worker[];
   tasks: Task[];
   managerLogs: ManagerLog[];
@@ -28,6 +31,15 @@ export interface OfficeStore {
   liveStreamWorkerId: string | null;
   officeMessages: AgentMessage[];
   ceoNotes: CEONote[];
+
+  /* 2층 전용 상태 */
+  floor2Project: Project | null;
+  floor2Messages: AgentMessage[];
+  floor2Timeline: TimelineEvent[];
+
+  getFloorWorkers: (floor: FloorId) => Worker[];
+  getActiveProject: () => Project | null;
+  getActiveMessages: () => AgentMessage[];
 
   getWorker: (id: string) => Worker | undefined;
   updateWorker: (id: string, u: Partial<Worker>) => void;
@@ -96,6 +108,20 @@ export interface OfficeStore {
   setCopyArchiveOpen: (open: boolean) => void;
   dataStorageOpen: boolean;
   setDataStorageOpen: (open: boolean) => void;
+
+  /* 2층 전용 카피보관함 */
+  floor2CopyArchive: CopyArchiveItem[];
+  addFloor2CopyArchiveItem: (item: Omit<CopyArchiveItem, 'id'>) => void;
+  updateFloor2CopyArchiveItem: (id: string, updates: Partial<CopyArchiveItem>) => void;
+  removeFloor2CopyArchiveItem: (id: string) => void;
+  setFloor2CopyArchive: (items: CopyArchiveItem[]) => void;
+
+  /* 2층 프로젝트 액션 */
+  startFloor2Project: (productInfo: string, phases: WorkPhase[], opts?: Partial<Project>) => void;
+  setFloor2ProjectStatus: (status: ProjectStatus) => void;
+  completeFloor2Project: (finalReport: string) => void;
+  addFloor2Message: (msg: AgentMessage) => void;
+  reviewFloor2Project: (feedback?: string) => void;
 }
 
 function makeWorker(
@@ -108,8 +134,10 @@ function makeWorker(
   provider: LLMProvider,
   model: string,
   isManager = false,
+  floor: FloorId = 1,
 ): Worker {
-  const office = OFFICES[officeIdx];
+  const officeArr = floor === 2 ? FLOOR2_OFFICES : OFFICES;
+  const office = officeArr[officeIdx];
   return {
     id: uid(),
     charId,
@@ -130,27 +158,42 @@ function makeWorker(
     isManager,
     personality: { ...DEFAULT_PERSONALITY },
     streamingText: '',
+    floor,
   };
 }
+
+/* 2층 캐릭터 (AI 제작 부서 — 전원 이미지 생성)
+   FLOOR2_OFFICES: idx 0-2 = 위 3명(Front), idx 3-5 = 아래 3명(Back) */
+const FLOOR2_INITIAL: Worker[] = [
+  makeWorker(1, 0, '김영주', 'AI 이미지', 'aiImage1', 'AI 제품 이미지 생성', 'google' as LLMProvider, 'gemini-2.0-flash-exp', false, 2),
+  makeWorker(2, 1, '오예원', 'AI 이미지', 'aiImage2', 'AI 제품 이미지 생성', 'google' as LLMProvider, 'gemini-2.0-flash-exp', false, 2),
+  makeWorker(3, 2, '이한나', 'AI 이미지', 'aiImage3', 'AI 제품 이미지 생성', 'google' as LLMProvider, 'gemini-2.0-flash-exp', false, 2),
+  makeWorker(4, 3, '장한나', 'AI 이미지', 'aiImage4', 'AI 제품 이미지 생성', 'google' as LLMProvider, 'gemini-2.0-flash-exp', false, 2),
+  makeWorker(5, 4, '차지우', 'AI 이미지', 'aiImage5', 'AI 제품 이미지 생성', 'google' as LLMProvider, 'gemini-2.0-flash-exp', false, 2),
+  makeWorker(1, 5, '한나라', 'AI 이미지', 'aiImage6', 'AI 제품 이미지 생성', 'google' as LLMProvider, 'gemini-2.0-flash-exp', false, 2),
+];
 
 const M = 'claude-opus-4-6';
 const P = 'anthropic' as LLMProvider;
 
 const INITIAL: Worker[] = [
-  makeWorker(1, 0, '김하늘', '상페 기획', 'spPlanner', '상세페이지 기획 (구성·레이아웃·스토리보드)', P, M),
-  makeWorker(2, 1, '이서연', '상페 카피·후킹', 'spCopy', '상세페이지 카피+후킹 (헤드라인·본문·CTA·후킹문구)', P, M),
-  makeWorker(3, 2, '박지민', '상페 이미지', 'spImage', '상세페이지 제품 이미지 생성', 'google' as LLMProvider, 'gemini-2.0-flash-exp'),
-  makeWorker(4, 3, '최유진', '상페 전환최적화', 'spCRO', '상세페이지 CRO (전환율 분석·A/B테스트)', P, M),
-  makeWorker(5, 4, '정민수', 'DA 전략기획', 'daStrategy', 'DA 전략기획 (캠페인·타겟팅·매체선정)', P, M),
-  makeWorker(6, 5, '강다현', 'DA 카피', 'daCopy', 'DA 광고카피 (소재 헤드라인·본문·CTA)', P, M),
-  makeWorker(7, 6, '윤재호', 'DA 퍼포먼스', 'daAnalysis', 'DA 퍼포먼스 분석 (ROAS·CTR·리포트)', P, M),
-  makeWorker(8, 7, '김인기', 'DA 소재디자인', 'daCreative', 'DA 소재 디자이너 (배너·이미지·크리에이티브)', P, M),
-  makeWorker(9, 8, '윤성현', '중간관리자', 'manager', '중간관리자 (프로세스·데이터 관리)', P, M),
-  { ...makeWorker(10, 0, '송승환', '파운더', 'manager', '파운더 / CEO (전체 총괄)', P, M, true) },
+  makeWorker(1, 0, '김하늘', '시장조사·리서치', 'spPlanner', '시장 조사 및 니즈 파악, 제품 장단점 분석, 교차 검증 리서치', P, M, false, 1),
+  makeWorker(2, 1, '이서연', '데이터 정리·분석', 'spCopy', '수집 데이터 논리 분석·정리, 팩트 체크, 작업용 구조화', P, M, false, 1),
+  makeWorker(3, 2, '박지민', '기획안 설계', 'spImage', '상세페이지 전체 플로우·스토리텔링 설계, 타사 비교 기획', P, M, false, 1),
+  makeWorker(4, 3, '최유진', '카피·후킹', 'spCRO', '상세페이지 카피라이팅, 후킹성 부여, 이탈율 최소화', P, M, false, 1),
+  makeWorker(5, 4, '정민수', 'AI 이미지', 'daStrategy', '상세페이지 제품 AI 이미지 생성 (선택적 참여)', 'google' as LLMProvider, 'gemini-2.0-flash-exp', false, 1),
+  makeWorker(6, 5, '강다현', '중간 컨펌', 'daCopy', '상세페이지 중간 컨펌, 카피 보완·흐름 유지', P, M, false, 1),
+  makeWorker(7, 6, '윤재호', '단점 지적·검수', 'daAnalysis', '기획안 약점 지적·문제점 분석 (과장 없이 솔직하게)', P, M, false, 1),
+  makeWorker(8, 7, '김인기', '최종 컨펌·A/B', 'daCreative', '최종 컨펌 작업 + A안/B안 제시, 신중한 최종 판단', P, M, false, 1),
+  makeWorker(9, 8, '윤성현', '중간관리자', 'manager', '중간관리자 (프로세스·데이터 관리, 최종 보고서 취합)', P, M, false, 1),
+  { ...makeWorker(10, 0, '송승환', '파운더', 'manager', '파운더 / CEO (전체 총괄)', P, M, true, 1) },
 ];
 
 export const useOfficeStore = create<OfficeStore>((set, get) => ({
-  workers: INITIAL,
+  currentFloor: 1 as FloorId,
+  setCurrentFloor: (floor) => set({ currentFloor: floor }),
+
+  workers: [...INITIAL, ...FLOOR2_INITIAL],
   tasks: [],
   managerLogs: [],
   modal: { type: null, workerId: null },
@@ -163,6 +206,20 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
   liveStreamWorkerId: null,
   officeMessages: [],
   ceoNotes: [],
+
+  floor2Project: null,
+  floor2Messages: [],
+  floor2Timeline: [],
+
+  getFloorWorkers: (floor) => get().workers.filter(w => w.floor === floor),
+  getActiveProject: () => {
+    const s = get();
+    return s.currentFloor === 1 ? s.project : s.floor2Project;
+  },
+  getActiveMessages: () => {
+    const s = get();
+    return s.currentFloor === 1 ? s.officeMessages : s.floor2Messages;
+  },
 
   getWorker: (id) => get().workers.find(w => w.id === id),
 
@@ -564,4 +621,63 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
   setCopyArchiveOpen: (open) => set({ copyArchiveOpen: open }),
   dataStorageOpen: false,
   setDataStorageOpen: (open) => set({ dataStorageOpen: open }),
+
+  /* 2층 카피보관함 */
+  floor2CopyArchive: [],
+  addFloor2CopyArchiveItem: (item) => set(s => ({
+    floor2CopyArchive: [...s.floor2CopyArchive, { ...item, id: uid() }],
+  })),
+  updateFloor2CopyArchiveItem: (id, updates) => set(s => ({
+    floor2CopyArchive: s.floor2CopyArchive.map(c => c.id === id ? { ...c, ...updates, updatedAt: Date.now() } : c),
+  })),
+  removeFloor2CopyArchiveItem: (id) => set(s => ({
+    floor2CopyArchive: s.floor2CopyArchive.filter(c => c.id !== id),
+  })),
+  setFloor2CopyArchive: (items) => set({ floor2CopyArchive: items }),
+
+  /* 2층 프로젝트 */
+  startFloor2Project: (productInfo, phases, opts) => {
+    const colorIdx = (get().projectQueue.length) % PROJECT_COLORS.length;
+    const proj: Project = {
+      id: uid(), productInfo, status: 'planning',
+      phases, messages: [], finalReport: null,
+      createdAt: Date.now(), color: PROJECT_COLORS[colorIdx],
+      ...opts,
+    };
+    const workerUpdates = phases.map(p => p.workerId);
+    set(s => ({
+      floor2Project: proj,
+      workers: s.workers.map(w =>
+        workerUpdates.includes(w.id) ? { ...w, projectColor: proj.color } : w
+      ),
+      modal: { type: null, workerId: null },
+    }));
+  },
+
+  setFloor2ProjectStatus: (status) => set(s => ({
+    floor2Project: s.floor2Project ? { ...s.floor2Project, status } : null,
+  })),
+
+  completeFloor2Project: (finalReport) => set(s => {
+    if (!s.floor2Project) return {};
+    const completed: Project = {
+      ...s.floor2Project, status: 'completed', finalReport, completedAt: Date.now(),
+    };
+    return {
+      floor2Project: completed,
+      projectQueue: [...s.projectQueue, completed],
+    };
+  }),
+
+  addFloor2Message: (msg) => set(s => ({
+    floor2Messages: [...s.floor2Messages.slice(-200), msg],
+  })),
+
+  reviewFloor2Project: (feedback) => set(s => {
+    if (!s.floor2Project) return {};
+    if (feedback) {
+      return { floor2Project: { ...s.floor2Project, reviewFeedback: feedback, reviewed: false } };
+    }
+    return { floor2Project: { ...s.floor2Project, reviewed: true, reviewFeedback: undefined } };
+  }),
 }));

@@ -5,93 +5,95 @@ import { Worker } from '@/lib/types';
 import { useOfficeStore } from '@/lib/store';
 import ModalShell from './ModalShell';
 
-const PLATFORMS = ['Meta (1080x1080)', 'Meta 스토리 (1080x1920)', 'Google GDN (300x250)', 'Google GDN (728x90)', '네이버 GFA (1200x628)', '카카오 (720x720)', 'YouTube 썸네일 (1280x720)'];
-const STYLES = ['모던/미니멀', '팝/컬러풀', '고급/프리미엄', '포토 중심', '일러스트', '텍스트 강조'];
-const PURPOSES = ['신규 고객 유입', '리타겟팅', '프로모션/세일', '브랜드 인지도', '앱 설치'];
+const FINAL_FOCUS = ['카피 완성도', '후킹성 강화', '전환 유도력', '흐름 일관성', '데이터 반영', 'CTA 최적화'];
 
 export default function DACreativeModal({ worker, onClose }: { worker: Worker; onClose: () => void }) {
   const startTask = useOfficeStore(s => s.startTask);
   const [productName, setProductName] = useState('');
-  const [brief, setBrief] = useState('');
-  const [platform, setPlatform] = useState('Meta (1080x1080)');
-  const [style, setStyle] = useState('모던/미니멀');
-  const [purpose, setPurpose] = useState('신규 고객 유입');
-  const [variations, setVariations] = useState(3);
+  const [fullDraft, setFullDraft] = useState('');
+  const [weaknessReport, setWeaknessReport] = useState('');
+  const [selectedFocus, setSelectedFocus] = useState<string[]>(['카피 완성도', '후킹성 강화', '전환 유도력']);
+  const [generateB, setGenerateB] = useState(true);
+  const [extraNotes, setExtraNotes] = useState('');
+
+  const toggleFocus = (f: string) => {
+    setSelectedFocus(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]);
+  };
 
   const submit = () => {
     if (!productName.trim()) return;
     const instruction = [
-      `상품/서비스: ${productName}`,
-      brief ? `디자인 브리프: ${brief}` : '',
-      `매체/사이즈: ${platform}`,
-      `디자인 스타일: ${style}`,
-      `광고 목적: ${purpose}`,
-      `${variations}개 변형안을 제안해주세요.`,
-      '각 소재별로: 레이아웃 구성, 카피 배치, 색상 팔레트, 이미지 방향, CTA 버튼 디자인을 상세히 기술해주세요.',
-      '각 변형안의 예상 CTR 개선 포인트도 설명해주세요.',
+      `상품명: ${productName}`,
+      `최종 포커스: ${selectedFocus.join(', ')}`,
+      fullDraft ? `\n[최종 검토할 기획안]\n${fullDraft}` : '',
+      weaknessReport ? `\n[약점 분석 리포트]\n${weaknessReport}` : '',
+      '',
+      '[최종 컨펌 지침 — A안]',
+      '1. 약점 분석 리포트의 지적 사항 중 타당한 것을 반영하세요',
+      '2. 전체 기획안의 완성도를 높이는 최종 수정을 진행하세요',
+      '3. 카피의 일관성, 후킹성, 전환 유도력을 최종 점검하세요',
+      '4. 수정하기 전에 충분히 고민하세요 — 모든 단계의 마무리입니다',
+      '',
+      generateB ? [
+        '[B안 작성 지침]',
+        'A안 작성 후, 동일한 데이터/목표를 기반으로 접근 방식만 다르게 한 B안도 작성하세요.',
+        '- 스토리텔링 구조, 톤앤매너, 후킹 방식을 차별화',
+        '- 내용이 산으로 가면 절대 안 됨 — 핵심 메시지 유지',
+        '',
+        '=== A안 ===',
+        '(최종 수정본 작성)',
+        '',
+        '=== B안 ===',
+        '(변형본 작성)',
+      ].join('\n') : '',
+      extraNotes ? `\n추가 지시: ${extraNotes}` : '',
     ].filter(Boolean).join('\n');
-    startTask(worker.id, instruction, { roleKey: 'daCreative', platform, style, purpose });
+    startTask(worker.id, instruction, { roleKey: 'daCreative', focus: selectedFocus, generateB });
   };
 
   return (
     <ModalShell worker={worker} onClose={onClose}>
       <div className="p-5 space-y-4">
         <div className="bg-gray-800 rounded-xl p-3 text-sm text-gray-300">
-          CEO님! 광고 소재를 디자인하겠습니다.
-          상품과 매체 정보를 알려주세요.
+          <span className="text-green-400 font-bold">최종 컨펌 + A/B안</span> 작업을 수행합니다.
+          신중하게 검토한 후 최종 기획안을 확정합니다.
         </div>
 
         <input type="text" value={productName} onChange={e => setProductName(e.target.value)}
           placeholder="상품명 / 서비스명" autoFocus
           className="w-full bg-gray-800 text-white placeholder-gray-500 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 border border-gray-700" />
 
-        <textarea value={brief} onChange={e => setBrief(e.target.value)}
-          placeholder="디자인 브리프 (브랜드 컬러, 분위기, 포함할 요소 등)" rows={2}
+        <textarea value={fullDraft} onChange={e => setFullDraft(e.target.value)}
+          placeholder="최종 검토할 기획안/카피 전문을 붙여넣으세요" rows={5}
           className="w-full bg-gray-800 text-white placeholder-gray-500 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 border border-gray-700" />
 
-        <div className="text-xs text-gray-500 font-medium">매체 / 사이즈</div>
+        <textarea value={weaknessReport} onChange={e => setWeaknessReport(e.target.value)}
+          placeholder="약점 분석 리포트를 붙여넣으세요 (선택)" rows={3}
+          className="w-full bg-gray-800 text-white placeholder-gray-500 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 border border-gray-700" />
+
+        <div className="text-xs text-gray-500 font-medium">최종 포커스 (복수 선택)</div>
         <div className="flex flex-wrap gap-2">
-          {PLATFORMS.map(p => (
-            <button key={p} onClick={() => setPlatform(p)}
-              className={`px-3 py-1.5 rounded-full text-xs transition-colors ${platform === p ? 'bg-violet-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-              {p}
+          {FINAL_FOCUS.map(f => (
+            <button key={f} onClick={() => toggleFocus(f)}
+              className={`px-3 py-1.5 rounded-full text-xs transition-colors ${selectedFocus.includes(f) ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+              {f}
             </button>
           ))}
         </div>
 
-        <div className="text-xs text-gray-500 font-medium">디자인 스타일</div>
-        <div className="flex flex-wrap gap-2">
-          {STYLES.map(s => (
-            <button key={s} onClick={() => setStyle(s)}
-              className={`px-3 py-1.5 rounded-full text-xs transition-colors ${style === s ? 'bg-pink-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-              {s}
-            </button>
-          ))}
-        </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={generateB} onChange={e => setGenerateB(e.target.checked)}
+            className="rounded bg-gray-800 border-gray-600" />
+          <span className="text-xs text-gray-400">B안 (변형본) 함께 생성</span>
+        </label>
 
-        <div className="text-xs text-gray-500 font-medium">광고 목적</div>
-        <div className="flex flex-wrap gap-2">
-          {PURPOSES.map(p => (
-            <button key={p} onClick={() => setPurpose(p)}
-              className={`px-3 py-1.5 rounded-full text-xs transition-colors ${purpose === p ? 'bg-amber-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-              {p}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-500 font-medium">변형안 수:</span>
-          {[2, 3, 5].map(n => (
-            <button key={n} onClick={() => setVariations(n)}
-              className={`w-8 h-8 rounded-full text-xs font-bold transition-colors ${variations === n ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-              {n}
-            </button>
-          ))}
-        </div>
+        <textarea value={extraNotes} onChange={e => setExtraNotes(e.target.value)}
+          placeholder="추가 지시사항 (선택)" rows={2}
+          className="w-full bg-gray-800 text-white placeholder-gray-500 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 border border-gray-700" />
 
         <button onClick={submit} disabled={!productName.trim()}
           className="w-full px-4 py-3 bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-xl text-sm font-medium transition-colors">
-          🎨 소재 디자인 시작
+          🏆 최종 컨펌 시작
         </button>
       </div>
     </ModalShell>

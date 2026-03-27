@@ -165,10 +165,10 @@ function markdownToHTML(md: string): string {
 
 export default function FinalReportModal() {
   const modal = useOfficeStore(s => s.modal);
-  const project = useOfficeStore(s => s.project);
+  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.floor2Project);
   const workers = useOfficeStore(s => s.workers);
   const closeModal = useOfficeStore(s => s.closeModal);
-  const reviewProject = useOfficeStore(s => s.reviewProject);
+  const reviewProject = useOfficeStore(s => s.currentFloor === 1 ? s.reviewProject : s.reviewFloor2Project);
   const [tab, setTab] = useState<'report' | 'sp' | 'da' | 'ab' | 'log'>('report');
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');

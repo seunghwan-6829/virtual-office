@@ -14,7 +14,7 @@ export default function TimelineReplay() {
   const closeModal = useOfficeStore(s => s.closeModal);
   const timeline = useOfficeStore(s => s.timeline);
   const workers = useOfficeStore(s => s.workers);
-  const project = useOfficeStore(s => s.project);
+  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.floor2Project);
 
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);

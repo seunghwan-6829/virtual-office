@@ -53,9 +53,10 @@ function mergeMessages(projectMsgs: AgentMessage[], officeMsgs: AgentMessage[]):
 export default function AgentChatPanel() {
   const chatOpen = useOfficeStore(s => s.chatPanelOpen);
   const setChatOpen = useOfficeStore(s => s.setChatPanelOpen);
-  const project = useOfficeStore(s => s.project);
-  const officeMessages = useOfficeStore(s => s.officeMessages);
-  const workers = useOfficeStore(s => s.workers);
+  const currentFloor = useOfficeStore(s => s.currentFloor);
+  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.floor2Project);
+  const officeMessages = useOfficeStore(s => s.currentFloor === 1 ? s.officeMessages : s.floor2Messages);
+  const workers = useOfficeStore(s => s.workers.filter(w => w.floor === s.currentFloor));
   const ceoNotes = useOfficeStore(s => s.ceoNotes);
   const [input, setInput] = useState('');
   const [targetPhaseId, setTargetPhaseId] = useState<string>('');

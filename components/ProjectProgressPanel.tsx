@@ -13,8 +13,8 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 export default function ProjectProgressPanel() {
-  const project = useOfficeStore(s => s.project);
-  const workers = useOfficeStore(s => s.workers);
+  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.floor2Project);
+  const workers = useOfficeStore(s => s.workers.filter(w => w.floor === s.currentFloor));
   const openFinalReport = useOfficeStore(s => s.openFinalReport);
   const setLiveStream = useOfficeStore(s => s.setLiveStreamWorker);
   const openABCompare = useOfficeStore(s => s.openABCompare);
@@ -28,8 +28,7 @@ export default function ProjectProgressPanel() {
 
   if (!project || project.status === 'idle') return null;
 
-  const spPhases = project.phases.filter(p => p.team === 'sp' && (!p.abVariant || p.abVariant === 'A'));
-  const daPhases = project.phases.filter(p => p.team === 'da' && (!p.abVariant || p.abVariant === 'A'));
+  const allPhases = project.phases.sort((a, b) => a.order - b.order);
   const totalDone = project.phases.filter(p => p.status === 'completed').length;
   const totalPhases = project.phases.length;
   const progress = totalPhases > 0 ? totalDone / totalPhases : 0;
@@ -83,12 +82,13 @@ export default function ProjectProgressPanel() {
         )}
       </div>
 
-      {/* Team Progress */}
+      {/* Phase Progress */}
       <div className="bg-gray-900/95 backdrop-blur border border-gray-700 rounded-xl p-3 space-y-2">
-        {spPhases.length > 0 && <div className="text-blue-400 text-xs font-bold">📄 상세페이지 팀</div>}
-        {spPhases.map(phase => {
+        <div className="text-blue-400 text-xs font-bold">📄 작업 진행 상황</div>
+        {allPhases.map(phase => {
           const w = workers.find(v => v.id === phase.workerId);
           const st = STATUS_LABELS[phase.status] ?? STATUS_LABELS.pending;
+          const variantLabel = phase.abVariant ? ` (${phase.abVariant}안)` : '';
           return (
             <div key={phase.id} className="flex items-center gap-2 group cursor-pointer"
               onClick={() => w && setLiveStream(w.id)}>
@@ -98,29 +98,9 @@ export default function ProjectProgressPanel() {
                   <img src={`/sprites/characters/CH_${w.charId}_Front.png`} alt="" className="w-full h-full object-cover" />
                 </div>
               )}
-              <span className="text-gray-300 text-xs flex-1 truncate group-hover:text-white">{w?.name}</span>
-              <span className={`text-xs font-medium ${st.color}`}>
-                {phase.status === 'in_progress' && <span className="inline-block animate-pulse mr-1">●</span>}
-                {st.label}
+              <span className="text-gray-300 text-xs flex-1 truncate group-hover:text-white">
+                {w?.name}{variantLabel}
               </span>
-            </div>
-          );
-        })}
-
-        {daPhases.length > 0 && <div className="text-purple-400 text-xs font-bold mt-3">📊 DA 팀</div>}
-        {daPhases.map(phase => {
-          const w = workers.find(v => v.id === phase.workerId);
-          const st = STATUS_LABELS[phase.status] ?? STATUS_LABELS.pending;
-          return (
-            <div key={phase.id} className="flex items-center gap-2 group cursor-pointer"
-              onClick={() => w && setLiveStream(w.id)}>
-              {w && (
-                <div className="w-6 h-6 rounded-full overflow-hidden flex-shrink-0 border group-hover:ring-2 ring-purple-500 transition-all"
-                  style={{ borderColor: getCharColor(w.charId) }}>
-                  <img src={`/sprites/characters/CH_${w.charId}_Front.png`} alt="" className="w-full h-full object-cover" />
-                </div>
-              )}
-              <span className="text-gray-300 text-xs flex-1 truncate group-hover:text-white">{w?.name}</span>
               <span className={`text-xs font-medium ${st.color}`}>
                 {phase.status === 'in_progress' && <span className="inline-block animate-pulse mr-1">●</span>}
                 {st.label}

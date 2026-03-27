@@ -31,7 +31,9 @@ import { createClient } from '@/lib/supabase/client';
 
 export default function Home() {
   const workers = useOfficeStore(s => s.workers);
-  const project = useOfficeStore(s => s.project);
+  const currentFloor = useOfficeStore(s => s.currentFloor);
+  const setCurrentFloor = useOfficeStore(s => s.setCurrentFloor);
+  const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.floor2Project);
   const projectQueue = useOfficeStore(s => s.projectQueue);
   const completeTask = useOfficeStore(s => s.completeTask);
   const sendWorkerToCEO = useOfficeStore(s => s.sendWorkerToCEO);
@@ -39,7 +41,6 @@ export default function Home() {
   const openFinalReport = useOfficeStore(s => s.openFinalReport);
   const openTimeline = useOfficeStore(s => s.openTimelineModal);
   const openABCompare = useOfficeStore(s => s.openABCompare);
-  const setCopyArchiveOpen = useOfficeStore(s => s.setCopyArchiveOpen);
   const setDataStorageOpen = useOfficeStore(s => s.setDataStorageOpen);
   const updateWorkerStreaming = useOfficeStore(s => s.updateWorkerStreaming);
   const [historyCount, setHistoryCount] = useState(0);
@@ -86,7 +87,7 @@ export default function Home() {
           provider: worker.provider,
           previousResult: isRevision ? task.result : undefined,
           revisionFeedback: isRevision ? lastRevision.feedback : undefined,
-          maxTokens: 8192,
+          maxTokens: 16384,
         }),
       });
 
@@ -119,8 +120,9 @@ export default function Home() {
       completeTask(workerId, result);
       await new Promise(r => setTimeout(r, 1500));
       sendWorkerToCEO(workerId);
-    } catch {
-      const fallbackResult = `[데모 모드] API 키가 설정되지 않았거나 오류가 발생했습니다.\n\n업무 내용: "${task.instruction}"`;
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const fallbackResult = `[API 오류] ${errMsg}\n\n업무 내용: "${task.instruction.slice(0, 200)}..."`;
       completeTask(workerId, fallbackResult);
       await new Promise(r => setTimeout(r, 1500));
       sendWorkerToCEO(workerId);
@@ -168,16 +170,32 @@ export default function Home() {
             </button>
           )}
           <h1 className="text-white font-bold text-sm tracking-wide">VIRTUAL OFFICE</h1>
+          <div className="flex items-center bg-gray-800/60 rounded-full p-0.5 gap-0.5">
+            <button
+              onClick={() => setCurrentFloor(1)}
+              className={`text-xs px-3 py-1 rounded-full font-bold transition-all ${
+                currentFloor === 1
+                  ? 'bg-blue-600 text-white shadow-lg'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+              }`}>
+              1F 상세페이지 제작
+            </button>
+            <button
+              onClick={() => setCurrentFloor(2)}
+              className={`text-xs px-3 py-1 rounded-full font-bold transition-all ${
+                currentFloor === 2
+                  ? 'bg-purple-600 text-white shadow-lg'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+              }`}>
+              2F AI제작
+            </button>
+          </div>
           <span className="text-gray-600 text-xs">AI Agent Simulation</span>
           {historyCount > 0 && (
             <span className="text-amber-400/50 text-xs" title={`${historyCount}건의 프로젝트 학습 데이터`}>🧠 {historyCount}</span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setCopyArchiveOpen(true)}
-            className="text-xs bg-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-full font-medium hover:bg-emerald-500/30 transition-colors">
-            📁 카피 보관함
-          </button>
           <button onClick={() => setDataStorageOpen(true)}
             className="text-xs bg-violet-500/20 text-violet-400 px-2.5 py-1 rounded-full font-medium hover:bg-violet-500/30 transition-colors">
             🧠 데이터 저장소

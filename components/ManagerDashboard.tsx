@@ -17,7 +17,7 @@ interface TrainingItem {
 
 export default function ManagerDashboard() {
   const modal = useOfficeStore(s => s.modal);
-  const workers = useOfficeStore(s => s.workers);
+  const workers = useOfficeStore(s => s.workers.filter(w => w.floor === 1));
   const managerLogs = useOfficeStore(s => s.managerLogs);
   const closeModal = useOfficeStore(s => s.closeModal);
   const [tab, setTab] = useState<Tab>('overview');

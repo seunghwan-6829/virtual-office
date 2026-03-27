@@ -5,76 +5,73 @@ import { Worker } from '@/lib/types';
 import { useOfficeStore } from '@/lib/store';
 import ModalShell from './ModalShell';
 
-const CHANNELS = ['Meta (Facebook/Instagram)', 'Google Ads', '네이버 SA/DA', '카카오모먼트', 'TikTok', 'YouTube'];
-const OBJECTIVES = ['브랜드 인지도', '트래픽 유입', '전환/구매', '리타겟팅', '앱 설치', 'LTV 최적화'];
-const BUDGETS = ['월 100만 이하', '월 100~300만', '월 300~1000만', '월 1000만 이상'];
+const IMAGE_TYPES = ['히어로 제품 이미지', '디테일 샷', '사용 장면', '비포/애프터', '라이프스타일', '패키지/구성품'];
+const STYLES = ['깔끔/미니멀', '고급/프리미엄', '자연/내추럴', '팝/비비드', '모던/세련', '따뜻/감성'];
 
 export default function DAStrategyModal({ worker, onClose }: { worker: Worker; onClose: () => void }) {
   const startTask = useOfficeStore(s => s.startTask);
   const [productName, setProductName] = useState('');
-  const [targetAudience, setTargetAudience] = useState('');
-  const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
-  const [objective, setObjective] = useState('전환/구매');
-  const [budget, setBudget] = useState('월 100~300만');
+  const [productDesc, setProductDesc] = useState('');
+  const [selectedTypes, setSelectedTypes] = useState<string[]>(['히어로 제품 이미지', '디테일 샷', '사용 장면']);
+  const [style, setStyle] = useState('깔끔/미니멀');
   const [extraNotes, setExtraNotes] = useState('');
 
-  const toggleChannel = (ch: string) => {
-    setSelectedChannels(prev => prev.includes(ch) ? prev.filter(c => c !== ch) : [...prev, ch]);
+  const toggleType = (t: string) => {
+    setSelectedTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
   };
 
   const submit = () => {
     if (!productName.trim()) return;
     const instruction = [
-      `상품/서비스: ${productName}`,
-      targetAudience ? `타겟 오디언스: ${targetAudience}` : '',
-      `캠페인 목표: ${objective}`,
-      `예산 규모: ${budget}`,
-      selectedChannels.length > 0 ? `선호 매체: ${selectedChannels.join(', ')}` : '',
-      '퍼널별 캠페인 구조, 타겟팅 전략, 예산 배분, 일정, KPI를 포함한 미디어 플랜을 작성해주세요.',
-      extraNotes ? `추가 지시: ${extraNotes}` : '',
+      `상품명: ${productName}`,
+      productDesc ? `상품 설명: ${productDesc}` : '',
+      `필요한 이미지 유형: ${selectedTypes.join(', ')}`,
+      `이미지 스타일: ${style}`,
+      '',
+      '[AI 이미지 생성 기획 지침]',
+      '1. 각 이미지 유형별 상세한 AI 생성 프롬프트(영어)를 작성하세요',
+      '2. 다양한 각도와 확대 사진 활용 방안을 제시하세요',
+      '3. 불필요한 배경/요소 제거 가이드를 포함하세요',
+      '4. 제품의 핵심 셀링포인트가 시각적으로 드러나도록 기획하세요',
+      '',
+      '[주의] AI가 이미지를 잘 인식할 수 있도록 명확하고 구체적인 프롬프트 작성',
+      extraNotes ? `\n추가 지시: ${extraNotes}` : '',
     ].filter(Boolean).join('\n');
-    startTask(worker.id, instruction, { roleKey: 'daStrategy', objective, budget, channels: selectedChannels });
+    startTask(worker.id, instruction, { roleKey: 'daStrategy', imageTypes: selectedTypes, style });
   };
 
   return (
     <ModalShell worker={worker} onClose={onClose}>
       <div className="p-5 space-y-4">
         <div className="bg-gray-800 rounded-xl p-3 text-sm text-gray-300">
-          DA 캠페인 전략을 수립하겠습니다. 상품과 목표를 알려주세요.
+          상세페이지용 <span className="text-cyan-400 font-bold">AI 제품 이미지</span>를 기획합니다.
+          제품 촬영 대신 AI 이미지로 활용할 수 있도록 기획서를 만들어드릴게요.
         </div>
+
         <input type="text" value={productName} onChange={e => setProductName(e.target.value)}
           placeholder="상품명 / 서비스명" autoFocus
           className="w-full bg-gray-800 text-white placeholder-gray-500 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 border border-gray-700" />
-        <input type="text" value={targetAudience} onChange={e => setTargetAudience(e.target.value)}
-          placeholder="타겟 오디언스 (예: 25~35 여성, 뷰티 관심)"
-          className="w-full bg-gray-800 text-white placeholder-gray-500 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 border border-gray-700" />
 
-        <div className="text-xs text-gray-500 font-medium">캠페인 목표</div>
+        <textarea value={productDesc} onChange={e => setProductDesc(e.target.value)}
+          placeholder="제품 외형, 색상, 재질, 사이즈 등 시각적 특징" rows={3}
+          className="w-full bg-gray-800 text-white placeholder-gray-500 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 border border-gray-700" />
+
+        <div className="text-xs text-gray-500 font-medium">필요한 이미지 유형 (복수 선택)</div>
         <div className="flex flex-wrap gap-2">
-          {OBJECTIVES.map(o => (
-            <button key={o} onClick={() => setObjective(o)}
-              className={`px-3 py-1.5 rounded-full text-xs transition-colors ${objective === o ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-              {o}
+          {IMAGE_TYPES.map(t => (
+            <button key={t} onClick={() => toggleType(t)}
+              className={`px-3 py-1.5 rounded-full text-xs transition-colors ${selectedTypes.includes(t) ? 'bg-cyan-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+              {t}
             </button>
           ))}
         </div>
 
-        <div className="text-xs text-gray-500 font-medium">광고 매체 (복수 선택)</div>
+        <div className="text-xs text-gray-500 font-medium">이미지 스타일</div>
         <div className="flex flex-wrap gap-2">
-          {CHANNELS.map(ch => (
-            <button key={ch} onClick={() => toggleChannel(ch)}
-              className={`px-3 py-1.5 rounded-full text-xs transition-colors ${selectedChannels.includes(ch) ? 'bg-cyan-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-              {ch}
-            </button>
-          ))}
-        </div>
-
-        <div className="text-xs text-gray-500 font-medium">월 예산 규모</div>
-        <div className="flex flex-wrap gap-2">
-          {BUDGETS.map(b => (
-            <button key={b} onClick={() => setBudget(b)}
-              className={`px-3 py-1.5 rounded-full text-xs transition-colors ${budget === b ? 'bg-amber-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-              {b}
+          {STYLES.map(s => (
+            <button key={s} onClick={() => setStyle(s)}
+              className={`px-3 py-1.5 rounded-full text-xs transition-colors ${style === s ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+              {s}
             </button>
           ))}
         </div>
@@ -85,7 +82,7 @@ export default function DAStrategyModal({ worker, onClose }: { worker: Worker; o
 
         <button onClick={submit} disabled={!productName.trim()}
           className="w-full px-4 py-3 bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-xl text-sm font-medium transition-colors">
-          🚀 미디어 플랜 작성 시작
+          🖼️ AI 이미지 기획 시작
         </button>
       </div>
     </ModalShell>

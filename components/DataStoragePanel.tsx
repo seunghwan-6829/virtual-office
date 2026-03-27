@@ -55,7 +55,8 @@ function ExpandableText({ text, limit = MSG_TRUNCATE }: { text: string; limit?: 
 export default function DataStoragePanel() {
   const open = useOfficeStore(s => s.dataStorageOpen);
   const setOpen = useOfficeStore(s => s.setDataStorageOpen);
-  const workers = useOfficeStore(s => s.workers);
+  const currentFloor = useOfficeStore(s => s.currentFloor);
+  const workers = useOfficeStore(s => s.workers.filter(w => w.floor === s.currentFloor));
 
   const [tab, setTab] = useState<Tab>('overview');
   const [stats, setStats] = useState<AgentStats[]>([]);

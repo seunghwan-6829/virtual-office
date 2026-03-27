@@ -18,10 +18,11 @@ type ViewMode = 'list' | 'detail' | 'edit' | 'add';
 export default function CopyArchivePanel() {
   const open = useOfficeStore(s => s.copyArchiveOpen);
   const setOpen = useOfficeStore(s => s.setCopyArchiveOpen);
-  const archive = useOfficeStore(s => s.copyArchive);
-  const addItem = useOfficeStore(s => s.addCopyArchiveItem);
-  const updateItem = useOfficeStore(s => s.updateCopyArchiveItem);
-  const removeItem = useOfficeStore(s => s.removeCopyArchiveItem);
+  const currentFloor = useOfficeStore(s => s.currentFloor);
+  const archive = useOfficeStore(s => s.currentFloor === 1 ? s.copyArchive : s.floor2CopyArchive);
+  const addItem = useOfficeStore(s => s.currentFloor === 1 ? s.addCopyArchiveItem : s.addFloor2CopyArchiveItem);
+  const updateItem = useOfficeStore(s => s.currentFloor === 1 ? s.updateCopyArchiveItem : s.updateFloor2CopyArchiveItem);
+  const removeItem = useOfficeStore(s => s.currentFloor === 1 ? s.removeCopyArchiveItem : s.removeFloor2CopyArchiveItem);
 
   const [view, setView] = useState<ViewMode>('list');
   const [selectedId, setSelectedId] = useState<string | null>(null);
