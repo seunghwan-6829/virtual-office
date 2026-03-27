@@ -17,7 +17,10 @@ export default function OfficeCanvas() {
       onWorkerClick: (id: string) => {
         const s = useOfficeStore.getState();
         const proj = s.currentFloor === 1 ? s.project : s.floor2Project;
-        if (proj && proj.status !== 'idle' && proj.status !== 'completed') {
+        const clickedWorker = s.workers.find(w => w.id === id);
+        if (proj?.status === 'waiting_image' && clickedWorker?.roleKey === 'daStrategy') {
+          s.openTaskModal(id);
+        } else if (proj && proj.status !== 'idle' && proj.status !== 'completed') {
           s.setWorkerPeek(id);
         } else {
           s.openTaskModal(id);

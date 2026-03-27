@@ -162,7 +162,7 @@ export default function FinalReportModal() {
   const workers = useOfficeStore(s => s.workers);
   const closeModal = useOfficeStore(s => s.closeModal);
   const reviewProject = useOfficeStore(s => s.currentFloor === 1 ? s.reviewProject : s.reviewFloor2Project);
-  const [tab, setTab] = useState<'report' | 'pipeline' | 'ab' | 'log'>('report');
+  const [tab, setTab] = useState<'report' | 'pipeline' | 'copy' | 'ab' | 'log'>('report');
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
 
@@ -215,9 +215,14 @@ export default function FinalReportModal() {
     navigator.clipboard.writeText(text);
   };
 
+  const copyPhase = mainPhases.find(p => p.roleKey === 'spCRO');
+  const confirmPhaseA = mainPhases.find(p => p.roleKey === 'daCreative');
+  const confirmPhaseB = abPhases.find(p => p.roleKey === 'daCreative');
+
   const TABS: [typeof tab, string][] = [
     ['report', '📝 종합 보고서'],
     ['pipeline', isFloor2 ? '🖼️ AI 제작 결과' : '📄 파이프라인 결과'],
+    ...(!isFloor2 ? [['copy' as const, '🎯 상세페이지 카피'] as [typeof tab, string]] : []),
     ...(abPhases.length > 0 ? [['ab' as const, '🔀 A/B 비교'] as [typeof tab, string]] : []),
     ['log', '💬 대화 로그'],
   ];
@@ -295,6 +300,83 @@ export default function FinalReportModal() {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {tab === 'copy' && (
+            <div className="space-y-8">
+              {/* 히어로 섹션 */}
+              <div className="bg-gradient-to-br from-blue-900/40 to-purple-900/40 border border-blue-500/30 rounded-2xl p-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full font-bold tracking-wide">FINAL COPY</span>
+                </div>
+                <h2 className="text-white text-xl font-bold mb-1">상세페이지 최종 카피</h2>
+                <p className="text-gray-400 text-sm">에이전트 파이프라인에서 완성된 상세페이지 카피라이팅 결과물</p>
+              </div>
+
+              {/* 순서4 카피·후킹 결과 */}
+              {copyPhase?.result && (
+                <div className="border border-gray-700 rounded-2xl overflow-hidden">
+                  <div className="bg-gradient-to-r from-orange-500/10 to-amber-500/10 border-b border-gray-700 px-5 py-3 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center text-orange-400 text-sm font-bold">4</div>
+                    <div>
+                      <div className="text-white font-bold text-sm">카피라이팅 초안</div>
+                      <div className="text-gray-500 text-[11px]">최유진 · 카피·후킹</div>
+                    </div>
+                    <span className="ml-auto text-[10px] bg-orange-500/15 text-orange-400 px-2 py-0.5 rounded-full">초안</span>
+                  </div>
+                  <div className="px-5 py-5 report-content text-sm leading-relaxed">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{copyPhase.result}</ReactMarkdown>
+                  </div>
+                </div>
+              )}
+
+              {/* 순서8 A안 최종 카피 */}
+              {confirmPhaseA?.result && (
+                <div className="border-2 border-blue-500/40 rounded-2xl overflow-hidden shadow-lg shadow-blue-500/5">
+                  <div className="bg-gradient-to-r from-blue-600/20 to-cyan-500/10 border-b border-blue-500/30 px-5 py-3 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 text-sm font-bold">A</div>
+                    <div>
+                      <div className="text-white font-bold text-sm">최종 카피 — A안</div>
+                      <div className="text-gray-500 text-[11px]">김인기 · 최종 컨펌·A/B</div>
+                    </div>
+                    <span className="ml-auto text-[10px] bg-blue-500/15 text-blue-400 px-2 py-0.5 rounded-full font-bold">최종본</span>
+                  </div>
+                  <div className="px-5 py-5">
+                    {/* 상세페이지 미리보기 레이아웃 */}
+                    <div className="bg-white rounded-xl overflow-hidden shadow-inner">
+                      <div className="p-6 report-content text-sm leading-relaxed text-gray-900 [&_h1]:text-2xl [&_h1]:font-black [&_h1]:text-gray-900 [&_h1]:mb-4 [&_h1]:mt-6 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-blue-700 [&_h2]:mt-5 [&_h2]:mb-2 [&_h2]:border-b [&_h2]:border-blue-100 [&_h2]:pb-2 [&_h3]:text-base [&_h3]:font-bold [&_h3]:text-gray-800 [&_h3]:mt-4 [&_h3]:mb-1 [&_p]:text-gray-700 [&_p]:mb-3 [&_strong]:text-blue-800 [&_li]:text-gray-700 [&_li]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-blue-400 [&_blockquote]:bg-blue-50 [&_blockquote]:pl-4 [&_blockquote]:py-2 [&_blockquote]:my-3 [&_blockquote]:rounded-r-lg [&_hr]:my-6 [&_hr]:border-gray-200 [&_table]:border [&_table]:border-gray-200 [&_th]:bg-gray-50 [&_th]:text-gray-800 [&_td]:border [&_td]:border-gray-200 [&_td]:text-gray-700">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{confirmPhaseA.result}</ReactMarkdown>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 순서8 B안 카피 */}
+              {confirmPhaseB?.result && (
+                <div className="border border-purple-500/30 rounded-2xl overflow-hidden">
+                  <div className="bg-gradient-to-r from-purple-600/15 to-pink-500/10 border-b border-purple-500/30 px-5 py-3 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400 text-sm font-bold">B</div>
+                    <div>
+                      <div className="text-white font-bold text-sm">최종 카피 — B안 (변형본)</div>
+                      <div className="text-gray-500 text-[11px]">김인기 · 최종 컨펌·A/B</div>
+                    </div>
+                    <span className="ml-auto text-[10px] bg-purple-500/15 text-purple-400 px-2 py-0.5 rounded-full">변형본</span>
+                  </div>
+                  <div className="px-5 py-5">
+                    <div className="bg-white rounded-xl overflow-hidden shadow-inner">
+                      <div className="p-6 report-content text-sm leading-relaxed text-gray-900 [&_h1]:text-2xl [&_h1]:font-black [&_h1]:text-gray-900 [&_h1]:mb-4 [&_h1]:mt-6 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-purple-700 [&_h2]:mt-5 [&_h2]:mb-2 [&_h2]:border-b [&_h2]:border-purple-100 [&_h2]:pb-2 [&_h3]:text-base [&_h3]:font-bold [&_h3]:text-gray-800 [&_h3]:mt-4 [&_h3]:mb-1 [&_p]:text-gray-700 [&_p]:mb-3 [&_strong]:text-purple-800 [&_li]:text-gray-700 [&_li]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-purple-400 [&_blockquote]:bg-purple-50 [&_blockquote]:pl-4 [&_blockquote]:py-2 [&_blockquote]:my-3 [&_blockquote]:rounded-r-lg [&_hr]:my-6 [&_hr]:border-gray-200 [&_table]:border [&_table]:border-gray-200 [&_th]:bg-gray-50 [&_th]:text-gray-800 [&_td]:border [&_td]:border-gray-200 [&_td]:text-gray-700">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{confirmPhaseB.result}</ReactMarkdown>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!copyPhase?.result && !confirmPhaseA?.result && (
+                <div className="text-gray-500 text-sm text-center py-12">카피 데이터가 아직 없습니다</div>
+              )}
             </div>
           )}
 
