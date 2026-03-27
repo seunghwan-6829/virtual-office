@@ -386,7 +386,7 @@ async function callLLMStreaming(
 
   async function singleCallOnce(prompt: string, tokens: number): Promise<string> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120_000);
+    const timeout = setTimeout(() => controller.abort(), 300_000);
 
     try {
       const res = await fetch('/api/chat', {
