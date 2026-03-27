@@ -25,6 +25,7 @@ import DataStoragePanel from '@/components/DataStoragePanel';
 import AdminPanel from '@/components/AdminPanel';
 import { useOfficeStore } from '@/lib/store';
 import { ProjectTemplate, CompetitorInput } from '@/lib/types';
+import { completeImageWorkAndDeliver } from '@/lib/orchestrator';
 import { loadProjectHistory, initStorageFromSupabase } from '@/lib/storage';
 import { startOfficeLife, stopOfficeLife } from '@/lib/office-life';
 import { createClient } from '@/lib/supabase/client';
@@ -119,13 +120,23 @@ export default function Home() {
 
       completeTask(workerId, result);
       await new Promise(r => setTimeout(r, 1500));
-      sendWorkerToCEO(workerId);
+      const currentProject = useOfficeStore.getState().project;
+      if (worker.roleKey === 'daStrategy' && currentProject?.status === 'waiting_image') {
+        completeImageWorkAndDeliver();
+      } else {
+        sendWorkerToCEO(workerId);
+      }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       const fallbackResult = `[API 오류] ${errMsg}\n\n업무 내용: "${task.instruction.slice(0, 200)}..."`;
       completeTask(workerId, fallbackResult);
       await new Promise(r => setTimeout(r, 1500));
-      sendWorkerToCEO(workerId);
+      const currentProject = useOfficeStore.getState().project;
+      if (worker.roleKey === 'daStrategy' && currentProject?.status === 'waiting_image') {
+        completeImageWorkAndDeliver();
+      } else {
+        sendWorkerToCEO(workerId);
+      }
     }
   }, [completeTask, sendWorkerToCEO, updateWorkerStreaming]);
 
@@ -142,8 +153,9 @@ export default function Home() {
   }, [executeWorkerTask]);
 
   const waitingCount = workers.filter(w => w.state === 'waitingAtCEO').length;
-  const isProjectRunning = project && project.status !== 'idle' && project.status !== 'completed';
+  const isProjectRunning = project && project.status !== 'idle' && project.status !== 'completed' && project.status !== 'waiting_image';
   const isProjectDone = project?.status === 'completed';
+  const isWaitingImage = project?.status === 'waiting_image';
   const hasAB = project?.phases.some(p => p.abVariant === 'B');
 
   const handleTemplateSelect = (t: ProjectTemplate) => {
@@ -205,7 +217,12 @@ export default function Home() {
               ⚡ 에이전트 자율 협업 중
             </span>
           )}
-          {isProjectDone && (
+          {isWaitingImage && (
+            <span className="text-xs bg-amber-500/20 text-amber-400 px-2.5 py-1 rounded-full animate-pulse font-medium">
+              📸 이미지 작업 대기 — 정민수 클릭
+            </span>
+          )}
+          {(isProjectDone || isWaitingImage) && (
             <div className="flex items-center gap-1.5">
               <button onClick={openFinalReport}
                 className="text-xs bg-green-500/20 text-green-400 px-2.5 py-1 rounded-full font-medium hover:bg-green-500/30 transition-colors">
@@ -228,7 +245,7 @@ export default function Home() {
               보고 대기: {waitingCount}명
             </span>
           )}
-          {!isProjectRunning && (
+          {!isProjectRunning && !isWaitingImage && (
             <button onClick={openProjectInput}
               className="text-xs bg-gradient-to-r from-blue-600 to-purple-600 text-white px-3 py-1.5 rounded-full font-bold hover:from-blue-500 hover:to-purple-500 transition-all">
               🚀 프로젝트 시작

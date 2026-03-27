@@ -173,22 +173,6 @@ const PIPELINE_STEPS: PipelineStep[] = [
 
 최종 확정된 상세페이지 기획안(A안)을 완성하세요.`,
   },
-  {
-    roleKey: 'daStrategy', step: 5, label: 'AI 이미지', isOptional: true, runsLast: true,
-    taskTemplate: `상세페이지에 사용할 AI 제품 이미지를 기획하세요.
-
-[수행 항목]
-1. 제공받은 제품 이미지를 기반으로 AI 이미지 생성 컨셉 기획
-2. 다양한 각도와 확대 사진 활용 방안
-3. 각 이미지별 상세한 AI 생성 프롬프트(영어) 작성
-4. 불필요한 배경/요소 제거 가이드
-
-[주의사항]
-- AI가 이미지를 잘 인식할 수 있도록 구성
-- 제품의 핵심 셀링포인트가 시각적으로 드러나도록 기획
-
-AI 이미지 생성 기획서를 작성하세요.`,
-  },
 ];
 
 const STEP8_B_TEMPLATE = `모든 이전 단계의 작업을 종합하여 B안(변형본)을 작성하세요.
@@ -225,7 +209,6 @@ export interface ProjectInput {
   competitorData?: CompetitorInput;
   templateId?: string;
   floor?: FloorId;
-  includeImages?: boolean;
 }
 
 function personalityToPrompt(p: AgentPersonality): string {
@@ -280,16 +263,7 @@ export function createProjectPhases(input: ProjectInput): WorkPhase[] {
     return phases;
   }
 
-  const executionOrder = PIPELINE_STEPS
-    .filter(step => {
-      if (step.isOptional && !input.includeImages) return false;
-      return true;
-    })
-    .sort((a, b) => {
-      if (a.runsLast && !b.runsLast) return 1;
-      if (!a.runsLast && b.runsLast) return -1;
-      return a.step - b.step;
-    });
+  const executionOrder = [...PIPELINE_STEPS].sort((a, b) => a.step - b.step);
 
   let prevId: string | undefined;
 
@@ -408,6 +382,8 @@ async function callLLMStreaming(
 
   const MAX_API_RETRIES = 6;
 
+  let streamPrefix = '';
+
   async function singleCallOnce(prompt: string, tokens: number): Promise<string> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 120_000);
@@ -439,7 +415,7 @@ async function callLLMStreaming(
         if (done) break;
         const chunk = dec.decode(value, { stream: true });
         out += chunk;
-        onChunk?.(out);
+        onChunk?.(streamPrefix + out);
       }
       return out;
     } finally {
@@ -476,6 +452,7 @@ async function callLLMStreaming(
     let currentInstruction = instruction;
 
     for (let round = 0; round <= MAX_CONTINUATION_ROUNDS; round++) {
+      streamPrefix = accumulated;
       const chunk = await singleCall(currentInstruction, effectiveMax);
       accumulated += chunk;
       onChunk?.(accumulated);
@@ -844,10 +821,49 @@ export async function runAutonomousProject(input: ProjectInput) {
 
   if (manager) {
     useOfficeStore.getState().setWorkerState(manager.id, 'idle');
-    msg(manager.id, manager.name, ceo?.id ?? '', ceo?.name ?? 'CEO', 'CEO님, 최종 보고서 준비 완료!', 'approval');
     recordTimeline('phase_complete', manager.id, manager.name, '최종 보고서 완료');
-    useOfficeStore.getState().setWorkerAutonomousWalk(manager.id, 'CEO');
+
+    const jungminsu = s.workers.find(w => w.roleKey === 'daStrategy' && w.floor === 1);
+    if (jungminsu) {
+      msg(manager.id, manager.name, jungminsu.id, jungminsu.name,
+        `${jungminsu.name}님, 보고서 작업 완료됐습니다! AI 이미지 작업이 필요하면 준비해주세요.`, 'handoff');
+      useOfficeStore.getState().setWorkerAutonomousWalk(manager.id, jungminsu.id);
+      recordTimeline('walk', manager.id, manager.name, `→ ${jungminsu.name}에게 이동 (이미지 작업 요청)`, jungminsu.id);
+      useOfficeStore.getState().setProjectStatus('waiting_image');
+      bubble(jungminsu.id, '이미지 작업 대기 중... 클릭해서 시작하세요!', 10000);
+    } else {
+      msg(manager.id, manager.name, ceo?.id ?? '', ceo?.name ?? 'CEO', 'CEO님, 최종 보고서 준비 완료!', 'approval');
+      useOfficeStore.getState().setWorkerAutonomousWalk(manager.id, 'CEO');
+    }
   }
+}
+
+export function completeImageWorkAndDeliver() {
+  const s = useOfficeStore.getState();
+  const manager = s.workers.find(w => w.roleKey === 'manager' && !w.isManager && w.floor === 1);
+  const ceo = s.workers.find(w => w.isManager);
+  const jungminsu = s.workers.find(w => w.roleKey === 'daStrategy' && w.floor === 1);
+
+  if (!manager) return;
+
+  if (jungminsu) {
+    msg(jungminsu.id, jungminsu.name, manager.id, manager.name,
+      `${manager.name}님, AI 이미지 작업 완료했습니다! 결과물 전달드립니다.`, 'dialogue');
+    recordTimeline('phase_complete', jungminsu.id, jungminsu.name, 'AI 이미지 작업 완료');
+  }
+
+  useOfficeStore.getState().setWorkerState(manager.id, 'working');
+  bubble(manager.id, '이미지 포함 최종 자료 취합 중...', 8000);
+  recordTimeline('phase_start', manager.id, manager.name, '이미지 포함 최종 자료 취합');
+
+  setTimeout(() => {
+    useOfficeStore.getState().setWorkerState(manager.id, 'idle');
+    msg(manager.id, manager.name, ceo?.id ?? '', ceo?.name ?? 'CEO',
+      'CEO님, AI 이미지까지 포함된 최종 자료 준비 완료입니다!', 'approval');
+    recordTimeline('phase_complete', manager.id, manager.name, '최종 자료 취합 완료 → CEO 전달');
+    useOfficeStore.getState().setWorkerAutonomousWalk(manager.id, 'CEO');
+    useOfficeStore.getState().setProjectStatus('completed');
+  }, 3000);
 }
 
 export async function regenerateSection(phaseId: string, sectionFeedback: string): Promise<string> {

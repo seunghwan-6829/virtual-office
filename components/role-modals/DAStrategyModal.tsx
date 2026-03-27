@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Worker } from '@/lib/types';
 import { useOfficeStore } from '@/lib/store';
+import { completeImageWorkAndDeliver } from '@/lib/orchestrator';
 import ModalShell from './ModalShell';
 
 const IMAGE_TYPES = ['히어로 제품 이미지', '디테일 샷', '사용 장면', '비포/애프터', '라이프스타일', '패키지/구성품'];

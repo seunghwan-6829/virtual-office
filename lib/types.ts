@@ -146,7 +146,7 @@ export interface ModalState {
 
 // === Project System ===
 
-export type ProjectStatus = 'idle' | 'planning' | 'in_progress' | 'compiling' | 'completed';
+export type ProjectStatus = 'idle' | 'planning' | 'in_progress' | 'compiling' | 'completed' | 'waiting_image';
 export type PhaseStatus = 'pending' | 'in_progress' | 'completed' | 'revision';
 
 export interface WorkPhase {

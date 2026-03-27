@@ -10,11 +10,12 @@ const PIPELINE_MEMBERS = [
   { name: '이서연', role: '순서2 · 데이터 정리·분석', step: 2 },
   { name: '박지민', role: '순서3 · 기획안 설계', step: 3 },
   { name: '최유진', role: '순서4 · 카피·후킹', step: 4 },
-  { name: '정민수', role: '순서5 · AI 이미지 (선택)', step: 5 },
   { name: '강다현', role: '순서6 · 중간 컨펌', step: 6 },
   { name: '윤재호', role: '순서7 · 단점 지적·검수', step: 7 },
   { name: '김인기', role: '순서8 · 최종 컨펌·A/B', step: 8 },
 ];
+
+const POST_PIPELINE_MEMBER = { name: '정민수', role: 'AI 이미지 작업', step: 5 };
 
 const FLOOR2_MEMBERS = [
   { name: '김영주', role: 'AI 이미지' },
@@ -69,7 +70,6 @@ export default function ProjectInputModal() {
   const openCompetitor = useOfficeStore(s => s.openCompetitorModal);
 
   const [form, setForm] = useState<ProductForm>({ productName: '', brandName: '', sp1: '', sp2: '', sp3: '', price: '', target: '', weaknesses: '' });
-  const [includeImages, setIncludeImages] = useState(false);
   const [competitorData, setCompetitorData] = useState<CompetitorInput | null>(null);
   const [templateId, setTemplateId] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
@@ -111,7 +111,6 @@ export default function ProjectInputModal() {
         abEnabled: true,
         competitorData: competitorData ?? undefined,
         templateId: templateId || undefined,
-        includeImages,
       });
     }
   };
@@ -174,26 +173,29 @@ export default function ProjectInputModal() {
             <div className="rounded-xl p-4 border-2 border-blue-500 bg-blue-500/10">
               <div className="flex items-center gap-2 mb-3">
                 <span className="font-bold text-sm text-blue-400">상세페이지 제작 파이프라인</span>
-                <span className="text-xs text-gray-500">8단계 순차 실행</span>
+                <span className="text-xs text-gray-500">7단계 순차 실행</span>
               </div>
               <div className="space-y-1.5">
                 {PIPELINE_MEMBERS.map((m, i) => (
-                  <div key={m.name} className={`flex items-center gap-2 text-xs ${
-                    m.step === 5 ? 'text-gray-600' : 'text-gray-400'
-                  }`}>
-                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                      m.step === 5
-                        ? 'bg-gray-800 text-gray-500 border border-gray-700'
-                        : 'bg-blue-600/30 text-blue-400'
-                    }`}>{m.step}</span>
+                  <div key={m.name} className="flex items-center gap-2 text-xs text-gray-400">
+                    <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold bg-blue-600/30 text-blue-400">{m.step}</span>
                     <span className="font-medium">{m.name}</span>
                     <span className="text-gray-600">—</span>
                     <span>{m.role}</span>
-                    {i < PIPELINE_MEMBERS.length - 1 && m.step !== 5 && PIPELINE_MEMBERS[i + 1].step !== 5 && (
+                    {i < PIPELINE_MEMBERS.length - 1 && (
                       <span className="text-gray-700 ml-auto">→</span>
                     )}
                   </div>
                 ))}
+              </div>
+              <div className="mt-3 pt-3 border-t border-blue-500/20">
+                <div className="flex items-center gap-2 text-xs text-amber-400/80">
+                  <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">{POST_PIPELINE_MEMBER.step}</span>
+                  <span className="font-medium">{POST_PIPELINE_MEMBER.name}</span>
+                  <span className="text-gray-600">—</span>
+                  <span>{POST_PIPELINE_MEMBER.role}</span>
+                  <span className="text-[10px] bg-amber-500/15 text-amber-400/70 px-1.5 py-0.5 rounded-full ml-auto">보고서 후 별도 진행</span>
+                </div>
               </div>
             </div>
           )}
@@ -234,35 +236,6 @@ export default function ProjectInputModal() {
             />
           </div>
 
-          {/* 순서5 이미지 작업 옵션 (1층만) */}
-          {!isFloor2 && (
-            <div className={`rounded-xl p-4 border-2 transition-all ${
-              includeImages
-                ? 'border-amber-500 bg-amber-500/10'
-                : 'border-gray-700 bg-gray-800/30'
-            }`}>
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input type="checkbox" checked={includeImages} onChange={e => setIncludeImages(e.target.checked)}
-                  className="w-4 h-4 mt-0.5 rounded border-gray-600 bg-gray-800 text-amber-500 focus:ring-amber-500" />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-sm font-bold ${includeImages ? 'text-amber-400' : 'text-gray-400'}`}>
-                      순서5 · AI 이미지 작업 포함
-                    </span>
-                    <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full">선택</span>
-                  </div>
-                  <p className="text-gray-500 text-xs mt-1">
-                    정민수 에이전트가 제품 AI 이미지를 생성합니다. 체크하면 프로젝트 마지막에 실행됩니다.
-                  </p>
-                  {includeImages && (
-                    <p className="text-amber-400/80 text-xs mt-1.5">
-                      제품 이미지를 최소 4장 (다른 각도 + 확대 사진) 준비해주세요
-                    </p>
-                  )}
-                </div>
-              </label>
-            </div>
-          )}
         </div>
 
         <div className="p-5 pt-0 flex-shrink-0">
@@ -270,7 +243,7 @@ export default function ProjectInputModal() {
             className="w-full px-4 py-3.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white rounded-xl text-sm font-bold transition-all">
             {submitting ? '에이전트를 배치하는 중...'
               : isFloor2 ? 'AI 제작 부서 프로젝트 시작'
-              : `상세페이지 제작 파이프라인 시작${includeImages ? ' (이미지 포함)' : ''}`}
+              : '상세페이지 제작 파이프라인 시작'}
           </button>
         </div>
       </div>

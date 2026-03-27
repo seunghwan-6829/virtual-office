@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef, useEffect } from 'react';
 import { useOfficeStore } from '@/lib/store';
 import { getCharColor } from '@/lib/types';
 import ReactMarkdown from 'react-markdown';
@@ -18,17 +19,22 @@ export default function LiveStreamPanel() {
   const currentFloor = useOfficeStore(s => s.currentFloor);
   const project = useOfficeStore(s => s.currentFloor === 1 ? s.project : s.floor2Project);
 
-  if (!liveId) return null;
-
   const worker = workers.find(w => w.id === liveId);
-  if (!worker) return null;
-
   const phase = project?.phases.find(p => p.workerId === liveId && p.status === 'in_progress');
   const completedPhase = project?.phases.find(p => p.workerId === liveId && p.status === 'completed');
-  const streamText = phase?.streamingText || worker.streamingText;
+  const streamText = phase?.streamingText || worker?.streamingText;
   const displayText = streamText || completedPhase?.result || '';
+  const isStreaming = !!streamText && worker?.state === 'working';
 
-  const isStreaming = !!streamText && worker.state === 'working';
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current && isStreaming) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [displayText, isStreaming]);
+
+  if (!liveId || !worker) return null;
 
   return (
     <div className="fixed left-4 top-16 z-40 w-[420px] max-h-[70vh] bg-gray-900/95 backdrop-blur border border-gray-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
@@ -58,11 +64,14 @@ export default function LiveStreamPanel() {
         <button onClick={() => setLive(null)} className="text-gray-500 hover:text-white text-sm p-1">✕</button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4" ref={scrollRef}>
         {displayText ? (
           <div className="report-content text-xs leading-relaxed">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{displayText}</ReactMarkdown>
-            {isStreaming && <span className="inline-block w-2 h-4 bg-green-400 animate-pulse ml-0.5" />}
+            {isStreaming ? (
+              <pre className="whitespace-pre-wrap font-sans text-gray-200">{displayText}<span className="inline-block w-2 h-4 bg-green-400 animate-pulse ml-0.5" /></pre>
+            ) : (
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{displayText}</ReactMarkdown>
+            )}
           </div>
         ) : (
           <div className="text-gray-600 text-sm text-center py-8">
