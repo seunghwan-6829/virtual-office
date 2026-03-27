@@ -570,7 +570,7 @@ async function compileReport(productInfo: string, phases: WorkPhase[], input: Pr
   const mgrConfig = {
     role: mgr?.role ?? '중간관리자',
     roleKey: 'manager' as const,
-    model: mgr?.model ?? 'claude-opus-4-6',
+    model: mgr?.model ?? 'claude-sonnet-4-20250514',
     name: mgr?.name ?? '윤성현',
     title: mgr?.title ?? '중간관리자',
     provider: mgr?.provider ?? 'anthropic',
@@ -896,7 +896,7 @@ ${input.notes ? `메모: ${input.notes}` : ''}
   return callLLMStreaming(instruction, {
     role: mgr?.role ?? '중간관리자',
     roleKey: 'manager',
-    model: mgr?.model ?? 'claude-opus-4-6',
+    model: mgr?.model ?? 'claude-sonnet-4-20250514',
     name: mgr?.name ?? '윤성현',
     title: '경쟁사 분석',
     provider: mgr?.provider ?? 'anthropic',
@@ -930,7 +930,7 @@ JSON 형식으로 제안하세요:
   return callLLMStreaming(instruction, {
     role: '중간관리자',
     roleKey: 'manager',
-    model: 'claude-opus-4-6',
+    model: 'claude-sonnet-4-20250514',
     name: '윤성현',
     title: '에이전트 최적화',
     provider: 'anthropic',

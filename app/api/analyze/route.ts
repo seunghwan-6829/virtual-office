@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     }
 
     const { text } = await generateText({
-      model: anthropic('claude-opus-4-6'),
+      model: anthropic('claude-sonnet-4-20250514'),
       system: analysisPrompt,
       prompt: topic,
     });

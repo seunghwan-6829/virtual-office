@@ -33,7 +33,7 @@ export default function AddWorkerModal() {
 
   const submit = () => {
     if (!name.trim()) return;
-    addWorker(name.trim(), sel.title, sel.key, sel.role, 'anthropic', 'claude-opus-4-6');
+    addWorker(name.trim(), sel.title, sel.key, sel.role, 'anthropic', 'claude-sonnet-4-20250514');
     setName(''); setRoleIdx(0);
   };
 

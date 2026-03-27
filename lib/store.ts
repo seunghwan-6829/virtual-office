@@ -173,7 +173,7 @@ const FLOOR2_INITIAL: Worker[] = [
   makeWorker(1, 5, '한나라', 'AI 이미지', 'aiImage6', 'AI 제품 이미지 생성', 'google' as LLMProvider, 'gemini-2.0-flash-exp', false, 2),
 ];
 
-const M = 'claude-opus-4-6';
+const M = 'claude-sonnet-4-20250514';
 const P = 'anthropic' as LLMProvider;
 
 const INITIAL: Worker[] = [

@@ -7,7 +7,7 @@ export interface LLMOption {
 }
 
 export const LLM_OPTIONS: LLMOption[] = [
-  { provider: 'anthropic', model: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
+  { provider: 'anthropic', model: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4.5' },
   { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
   { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
 ];

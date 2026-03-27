@@ -21,7 +21,7 @@ export async function POST(req: Request) {
 
     const llmModel = provider === 'google'
       ? google(model || 'gemini-2.0-flash-exp')
-      : anthropic(model || 'claude-opus-4-6');
+      : anthropic(model || 'claude-sonnet-4-20250514');
 
     const result = await streamText({
       model: llmModel,
